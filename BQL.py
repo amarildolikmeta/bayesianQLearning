@@ -3,7 +3,7 @@ import numpy as np
 import random
 import math
 from scipy.stats import t
-
+from scipy import special
 discount_factor = 0.99 
 
 class BQLearning(object):
@@ -23,16 +23,20 @@ class BQLearning(object):
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
         
-        self.NG = np.ones(shape=sh,  dtype=(float,4))
+        #initialize the distributions
+        self.NG = np.zeros(shape=sh,  dtype=(float,4))
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
-                self.NG[state][action][2]+=0.1##alpha>1 ensures the normal-gamma dist is well defined
+                self.NG[state][action][1]=0.1 #low precision
+                self.NG[state][action][2]=1.1#alpha>1 ensures the normal-gamma dist is well defined
+                self.NG[state][action][3]=1
         
     def update(self, state, action, reward, next_state, method=0):
         if method==self.MOMENT_UPDATING:
             self.moment_updating(state, action, reward, next_state)
         else :
             self.mixture_updating(state, action, reward, next_state)
+            
     def moment_updating(self, state, action, reward, next_state):
         NG=self.NG
         mean=NG[state][action][0]
@@ -40,7 +44,7 @@ class BQLearning(object):
         alpha=NG[state][action][2]
         beta=NG[state][action][3]
         #find best action at next state
-        means=NG[next_state][:][0]
+        means=NG[next_state, :, 0]
         next_action=np.argmax(means)
         mean_next=NG[state][next_action][0]
         lamb_next=NG[state][next_action][1]
@@ -64,6 +68,7 @@ class BQLearning(object):
         elif method==self.MYOPIC_VPI:
             return self.Myopic_VPI_action_selection(self.NG, state)
         else :
+            print("Random Action");
             return random.randint(0, self.NUM_ACTIONS)
     
     def Q_sampling_action_selection(self, NG, state):
@@ -79,7 +84,7 @@ class BQLearning(object):
     
     def Myopic_VPI_action_selection(self, NG, state):
         #get best and second best action
-        means=NG[state][:][0]
+        means=NG[state, :, 0]
         ranking=np.zeros(self.NUM_ACTIONS)
         ind = np.argpartition(means, -2)[-2:]
         indexes=ind[np.argsort(means[ind])]
@@ -106,11 +111,24 @@ class BQLearning(object):
         return tau, R
     
     def get_c_value(self, mean, lamb, alpha, beta):
-        c=(alpha*math.gamma(alpha+0.5)*math.sqrt(beta))
-        c=c*math.pow((1+(mean*mean)/(2*alpha)), 0.5-alpha)
-        c=c/((alpha-0.5)*math.gamma(alpha)*math.gamma(0.5)*alpha*math.sqrt(2*lamb))
+        c=math.sqrt(beta)/((alpha-0.5)*math.sqrt(2*lamb)*special.beta(alpha, 0.5))
+        c=c*math.pow(1+(mean**2/(2*alpha)), 0.5-alpha)
         return c
+    
+    def get_v_function(self):
+        v=np.zeros(self.NUM_STATES)
+        for i in range(self.NUM_STATES):
+            means=self.NG[i, :, 0]
+            v[i]=np.max(means)
+        return v
 
+    def get_best_actions(self):
+        a=np.zeros(self.NUM_STATES)
+        for i in range(self.NUM_STATES):
+            means=self.NG[i, :, 0]
+            a[i]=np.argmax(means)
+        return a
+        
 def simulate():
     ## Initialize the "FrozenLake" environment
     env = gym.make('FrozenLake-v0')
@@ -120,7 +138,8 @@ def simulate():
     NUM_EPISODES=1000
     MAX_T=100
     total_score=0
-    
+    print("Initial V:")
+    print_V_function(agent.get_v_function(), agent.NUM_STATES)
     for episode in range(NUM_EPISODES):
         # Reset the environment
         obv = env.reset()
@@ -130,8 +149,8 @@ def simulate():
         score=0
         for i in range(MAX_T):
             #env.render()
-            # Select an action
-            action = agent.select_action(state_0)
+            # Select an action , specify method if needed
+            action = agent.select_action(state_0, method=agent.MYOPIC_VPI)
             # Execute the action
             obv, reward, done, _ = env.step(action)
             score+=reward
@@ -146,12 +165,38 @@ def simulate():
                break
         total_score+=score
     print("Total score is %d" % (total_score))
-
+    print_V_function(agent.get_v_function(), agent.NUM_STATES)
+    print_best_actions(agent.get_best_actions(), agent.NUM_STATES)
 
 def getCumulativeDistribution(mean, lamb, alpha, beta, x):
     rv=t(2*alpha)
-    return rv.cdf((x-mean)*math.pow((lamb*alpha)/beta, 0.5))
+    return rv.cdf((x-mean)*math.sqrt((lamb*alpha)/beta))
 
+def print_V_function(V, num_states):
+    n=int(math.sqrt(num_states))
+    print("V function is:")
+    for i in range(n):
+        l=[]
+        for j in range(n):
+            l.append(V[(i*n)+j])
+        print(l)
+        
+def print_best_actions(V, num_states):
+    n=int(math.sqrt(num_states))
+    print("Best Action are:")
+    for i in range(n):
+        l=[]
+        for j in range(n):
+            a=V[i*n+j]
+            if a==0:
+                l.append("Left")
+            elif a==1:
+                l.append("Down")
+            elif a==2:
+                l.append("Right")
+            else:
+                l.append("Up")
+        print(l)
 if __name__ == "__main__":
     simulate()
    
