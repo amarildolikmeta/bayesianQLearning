@@ -130,16 +130,20 @@ class BQLearning(object):
         return a
         
 def simulate():
-    ## Initialize the "FrozenLake" environment
-    env = gym.make('FrozenLake-v0')
+    # Initialize the  environment
+    #name="FrozenLake-v0"
+    name="NChain-v0"
+    env = gym.make(name)
     NUM_STATES=env.observation_space.n
     NUM_ACTIONS=env.action_space.n
     agent=BQLearning(sh=(NUM_STATES, NUM_ACTIONS))
-    NUM_EPISODES=1000
+    NUM_EPISODES=10000
     MAX_T=100
+    method=agent.Q_VALUE_SAMPLING
+    #method=agent.MYOPIC_VPI
     total_score=0
     print("Initial V:")
-    print_V_function(agent.get_v_function(), agent.NUM_STATES)
+    print_V_function(agent.get_v_function(), agent.NUM_STATES, name)
     for episode in range(NUM_EPISODES):
         # Reset the environment
         obv = env.reset()
@@ -150,7 +154,7 @@ def simulate():
         for i in range(MAX_T):
             #env.render()
             # Select an action , specify method if needed
-            action = agent.select_action(state_0, method=agent.MYOPIC_VPI)
+            action = agent.select_action(state_0,method)
             # Execute the action
             obv, reward, done, _ = env.step(action)
             score+=reward
@@ -165,38 +169,52 @@ def simulate():
                break
         total_score+=score
     print("Total score is %d" % (total_score))
-    print_V_function(agent.get_v_function(), agent.NUM_STATES)
-    print_best_actions(agent.get_best_actions(), agent.NUM_STATES)
+    print_V_function(agent.get_v_function(), agent.NUM_STATES, name)
+    print_best_actions(agent.get_best_actions(), agent.NUM_STATES, name)
 
 def getCumulativeDistribution(mean, lamb, alpha, beta, x):
     rv=t(2*alpha)
     return rv.cdf((x-mean)*math.sqrt((lamb*alpha)/beta))
 
-def print_V_function(V, num_states):
-    n=int(math.sqrt(num_states))
-    print("V function is:")
-    for i in range(n):
-        l=[]
-        for j in range(n):
-            l.append(V[(i*n)+j])
-        print(l)
+def print_V_function(V, num_states, name):
+    if name=="NChain-v0":
+        print(V)
+    else:    
+        n=int(math.sqrt(num_states))
+        print("V function is:")
+        for i in range(n):
+            l=[]
+            for j in range(n):
+                l.append(V[(i*n)+j])
+            print(l)
         
-def print_best_actions(V, num_states):
-    n=int(math.sqrt(num_states))
-    print("Best Action are:")
-    for i in range(n):
+def print_best_actions(V, num_states, name):
+    if name=="NChain-v0":
         l=[]
-        for j in range(n):
-            a=V[i*n+j]
+        for i in range(num_states):
+            a=V[i]
             if a==0:
-                l.append("Left")
-            elif a==1:
-                l.append("Down")
-            elif a==2:
-                l.append("Right")
+                l.append("Forward")
             else:
-                l.append("Up")
+                l.append("Backward")
         print(l)
+    else:
+        n=int(math.sqrt(num_states))
+        print("Best Action are:")
+        for i in range(n):
+            l=[]
+            for j in range(n):
+                a=V[i*n+j]
+                if a==0:
+                    l.append("Left")
+                elif a==1:
+                    l.append("Down")
+                elif a==2:
+                    l.append("Right")
+                else:
+                    l.append("Up")
+            print(l)
+
 if __name__ == "__main__":
     simulate()
    
