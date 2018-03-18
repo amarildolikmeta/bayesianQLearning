@@ -2,124 +2,150 @@ import gym
 import numpy as np
 import random
 import math
-## Initialize the "FrozenLake" environment
-env = gym.make('FrozenLake-v0')
-NUM_STATES=env.observation_space.n
-NUM_ACTIONS=env.action_space.n
-q_table = np.zeros(shape=(NUM_STATES , NUM_ACTIONS))
-NG=np.zeros(shape=(NUM_STATES, NUM_ACTIONS),  dtype=(float,4))
-MIN_EXPLORE_RATE = 0.01
-MIN_LEARNING_RATE = 0.1
-NUM_EPISODES=1000000
-MAX_T=100
 
-##algorithm params
+discount_factor = 0.99 
 
-#ACTION SELECTION
-Q_VALUE_SAMPLING=0
-MYOPIC_VPI=1
+class BQLearning(object):
+    """
+     Bayesian Q-Learning algorithm.
+    "Bayesian Q-learning". Dearden,Friedman,Russell. 1998.
+    """
+    def __init__(self, sh):
+        #ACTION SELECTION TYPE
+        self.Q_VALUE_SAMPLING=0
+        self.MYOPIC_VPI=1
+        
+        #POSTERIOR UPDATE
+        self.MOMENT_UPDATING=0
+        self.MIXTURE_UPDATING=1
+        self.NUM_STATES=sh[0]
+        self.NUM_ACTIONS=sh[1]
+        
+        self.NG = np.ones(shape=sh,  dtype=(float,4))+0.1 ##alpha>1 ensures the normal-gamma dist is well defined
 
-#POSTERIOR UPDATE
+    def update(self, state, action, reward, next_state, method=0):
+        if method==self.MOMENT_UPDATING:
+            self.moment_updating(state, action, reward, next_state)
+        else :
+            self.mixture_updating(state, action, reward, next_state)
+    def moment_updating(self, state, action, reward, next_state):
+        NG=self.NG
+        mean=NG[state][action][0]
+        lamb=NG[state][action][1]
+        alpha=NG[state][action][2]
+        beta=NG[state][action][3]
+        #find best action at next state
+        means=NG[next_state][:][0]
+        next_action=np.argmax(means)
+        mean_next=NG[state][next_action][0]
+        lamb_next=NG[state][next_action][1]
+        alpha_next=NG[state][next_action][2]
+        beta_next=NG[state][next_action][3]
+        #calculate the first two moments of the cumulative reward of the next state
+        M1=reward+discount_factor*mean_next
+        M2=reward**2+2*discount_factor*reward*mean_next+discount_factor**2*(((lamb_next+1)*beta_next)/(lamb_next*(alpha_next-1))+mean_next**2)
+        #update the distribution (n=1??)
+        NG[state][action][0]=(lamb*mean+M1)/(lamb)
+        NG[state][action][1]=lamb+1
+        NG[state][action][2]=alpha+0.5
+        NG[state][action][3]=beta+0.5*(M2-M1**2)+(lamb*(M1-mean)**2)/(2*(lamb+1))
+    
+    def mixture_updating(self, state, action, reward, next_state):
+        print("To be Implemented")
+    
+    def select_action(self, state, method=0):
+        if method==self.Q_VALUE_SAMPLING:
+            return self.Q_sampling_action_selection(self.NG, state)
+        elif method==self.MYOPIC_VPI:
+            return self.Myopic_VPI_action_selection(self.NG, state)
+        else :
+            return random.randint(0, self.NUM_ACTIONS)
+    
+    def Q_sampling_action_selection(self, NG, state):
+        #Sample one value for each action
+        samples=np.zeros(self.NUM_ACTIONS)
+        for i in range(self.NUM_ACTIONS):
+            mean=NG[state][i][0]
+            lamb=NG[state][i][1]
+            alpha=NG[state][i][2]
+            beta=NG[state][i][3]
+            samples[i]=self.sample_NG(mean,lamb,alpha,beta)[0]
+        return np.argmax((samples)) 
+    
+    def Myopic_VPI_action_selection(self, NG, state):
+        #get best and second best action
+        means=NG[state][:][0]
+        ranking=np.zeros(self.NUM_ACTIONS)
+        ind = np.argpartition(means, -2)[-2:]
+        indexes=ind[np.argsort(means[ind])]
+        best_action=indexes[1]
+        second_best=indexes[0]
+        for i in range(self.NUM_ACTIONS):
+            mean=NG[state][i][0]
+            lamb=NG[state][i][1]
+            alpha=NG[state][i][2]
+            beta=NG[state][i][3]
+            mean2=NG[state][second_best][0]
+            c=self.get_c_value(mean, lamb, alpha, beta)
+            if i==best_action:
+                ranking[i]= c +(mean2-mean)*getCumulativeDistribution(mean, lamb, alpha, beta, mean2)+mean
+            else :
+                ranking[i]= c +(mean-means[best_action])(1-getCumulativeDistribution(mean, lamb, alpha, beta,means[best_action]))+mean
+        return np.argmax(ranking)
 
+    def sample_NG(self, mean, lamb, alpha,beta):
+        ##Sample x from a normal distribution with mean μ and variance 1 / ( λ τ ) 
+        ##Sample τ from a gamma distribution with parameters alpha and beta 
+        tau=np.random.gamma(alpha, beta)
+        R=np.random.normal(mean, 1.0/(lamb*tau))
+        return tau, R
+    
+    def get_c_value(self, mean, lamb, alpha, beta):
+        c=(alpha*math.gamma(alpha+0.5)*math.sqrt(beta))
+        c=c*math.pow((1+(mean*mean)/(2*alpha)), 0.5-alpha)
+        c=c/((alpha-0.5)*math.gamma(alpha)*math.gamma(0.5)*alpha*math.sqrt(2*lamb))
+        return c
 
 def simulate():
-
-    ## Instantiating the learning related parameters
-    learning_rate = get_learning_rate(0)
-    explore_rate = get_explore_rate(0)
-    discount_factor = 0.99  # since the world is unchanging
+    ## Initialize the "FrozenLake" environment
+    env = gym.make('FrozenLake-v0')
+    NUM_STATES=env.observation_space.n
+    NUM_ACTIONS=env.action_space.n
+    agent=BQLearning(sh=(NUM_STATES, NUM_ACTIONS))
+    NUM_EPISODES=1000
+    MAX_T=100
     total_score=0
+    
     for episode in range(NUM_EPISODES):
-        
-        
         # Reset the environment
         obv = env.reset()
-        
         # the initial state
         state_0 =obv
-        
         #reset score
         score=0
         for t in range(MAX_T):
             #env.render()
-
             # Select an action
-            action = select_action(state_0, explore_rate)
-
+            action = agent.select_action(state_0)
             # Execute the action
             obv, reward, done, _ = env.step(action)
-            
             score+=reward
-            
             # Observe the result
             state = obv
-           
             # Update the Q based on the result
-            best_q = np.amax(q_table[state])
-            q_table[state_0 , action] += learning_rate*(reward + discount_factor*(best_q) - q_table[state_0 , action])
-
+            agent.update(state_0, action, reward, state)
             # Setting up for the next iteration
             state_0 = state
-
             if done:
                #print("Episode %d finished after %f time steps, score=%d" % (episode, t, score))
                break
         total_score+=score
-        # Update parameters
-        explore_rate = get_explore_rate(episode)
-        learning_rate = get_learning_rate(episode)
     print("Total score is %d" % (total_score))
-    tab=get_v(q_table)
-    for i in range(NUM_STATES):
-        print("State %d :Best Action:%d , Value:%f"%(i, tab[i, 1], tab[i, 0]))
-def select_action(state, explore_rate):
-    # Select a random action
-    if random.random() < explore_rate:
-        action = env.action_space.sample()
-    # Select the action with the highest q
-    else:
-        action = np.argmax(q_table[state])
-    return action
 
 
-def get_explore_rate(t):
-    return max(MIN_EXPLORE_RATE, min(1, 1.0 - math.log10((t+1)/25)))
-
-def get_learning_rate(t):
-    return max(MIN_LEARNING_RATE, min(0.5, 1.0 - math.log10((t+1)/25)))
-
-def get_v(q_table):
-    q_v=np.zeros(shape=(NUM_STATES, 2))
-    for i in range(NUM_STATES):
-        q_v[i][0]=np.max(q_table[i])
-        q_v[i][1]=np.argmax(q_table[i])
-    return q_v
-
-def get_action(NG, state, method):
-    if method==Q_VALUE_SAMPLING:
-        #Sample one value for each action
-        samples=np.zeros(NUM_ACTIONS)
-        for i in range(NUM_ACTIONS):
-            samples[i]=sample_NG(NG[state][i][0],NG[state][i][1], NG[state][i][2], NG[state][i][3])[0]
-        return np.argmax((samples))
-    elif method==MYOPIC_VPI:
-        print(1)
-    else :
-        return random.randint(0, NUM_ACTIONS)
-
-def sample_NG(mean, lamb, alpha,beta):
-    ##Sample x from a normal distribution with mean μ and variance 1 / ( λ τ ) 
-    ##Sample τ from a gamma distribution with parameters alpha and beta 
-    tau=np.random.gamma(alpha, beta)
-    R=np.random.normal(mean, 1.0/(lamb*tau))
-    return tau, R
+def getCumulativeDistribution(mean, lamb, alpha, beta, x):
+    return 0
 
 if __name__ == "__main__":
-   m=np.ones(shape=(1, 1),  dtype=(float,4))
-   samples=np.zeros(1)
-   for i in range(1):
-       samples[i]=sample_NG(m[0][i][0],m[0][i][1], m[0][i][2], m[0][i][3])[0]
-   print(samples)
-   #sampler = lambda tup: sample_NG(tup[0] , tup[1],tup[2],tup[3])[0]
-   #vfunc=np.vectorize(sampler)
-   #print(vfunc(m[0]))
+    simulate()
+   
