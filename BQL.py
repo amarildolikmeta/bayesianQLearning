@@ -2,6 +2,7 @@ import gym
 import numpy as np
 import random
 import math
+from scipy.stats import t
 
 discount_factor = 0.99 
 
@@ -18,11 +19,15 @@ class BQLearning(object):
         #POSTERIOR UPDATE
         self.MOMENT_UPDATING=0
         self.MIXTURE_UPDATING=1
+
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
         
-        self.NG = np.ones(shape=sh,  dtype=(float,4))+0.1 ##alpha>1 ensures the normal-gamma dist is well defined
-
+        self.NG = np.ones(shape=sh,  dtype=(float,4))
+        for state in range(self.NUM_STATES):
+            for action in range(self.NUM_ACTIONS):
+                self.NG[state][action][2]+=0.1##alpha>1 ensures the normal-gamma dist is well defined
+        
     def update(self, state, action, reward, next_state, method=0):
         if method==self.MOMENT_UPDATING:
             self.moment_updating(state, action, reward, next_state)
@@ -90,7 +95,7 @@ class BQLearning(object):
             if i==best_action:
                 ranking[i]= c +(mean2-mean)*getCumulativeDistribution(mean, lamb, alpha, beta, mean2)+mean
             else :
-                ranking[i]= c +(mean-means[best_action])(1-getCumulativeDistribution(mean, lamb, alpha, beta,means[best_action]))+mean
+                ranking[i]= c +(mean-means[best_action])*(1-getCumulativeDistribution(mean, lamb, alpha, beta,means[best_action]))+mean
         return np.argmax(ranking)
 
     def sample_NG(self, mean, lamb, alpha,beta):
@@ -123,10 +128,10 @@ def simulate():
         state_0 =obv
         #reset score
         score=0
-        for t in range(MAX_T):
+        for i in range(MAX_T):
             #env.render()
             # Select an action
-            action = agent.select_action(state_0)
+            action = agent.select_action(state_0, method=agent.MYOPIC_VPI)
             # Execute the action
             obv, reward, done, _ = env.step(action)
             score+=reward
@@ -144,7 +149,8 @@ def simulate():
 
 
 def getCumulativeDistribution(mean, lamb, alpha, beta, x):
-    return 0
+    rv=t(2*alpha)
+    return rv.cdf((x-mean)*math.pow((lamb*alpha)/beta, 0.5))
 
 if __name__ == "__main__":
     simulate()
