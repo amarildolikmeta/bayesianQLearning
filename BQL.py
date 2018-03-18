@@ -131,7 +131,7 @@ def simulate():
         for i in range(MAX_T):
             #env.render()
             # Select an action
-            action = agent.select_action(state_0, method=agent.MYOPIC_VPI)
+            action = agent.select_action(state_0)
             # Execute the action
             obv, reward, done, _ = env.step(action)
             score+=reward
