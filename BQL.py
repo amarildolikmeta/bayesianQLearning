@@ -4,6 +4,7 @@ import random
 import math
 from scipy.stats import t
 from scipy import special
+import sys
 discount_factor = 0.99 
 
 class BQLearning(object):
@@ -108,7 +109,7 @@ class BQLearning(object):
         ##Sample τ from a gamma distribution with parameters alpha and beta 
         tau=np.random.gamma(alpha, beta)
         R=np.random.normal(mean, 1.0/(lamb*tau))
-        return tau, R
+        return R, tau
     
     def get_c_value(self, mean, lamb, alpha, beta):
         c=math.sqrt(beta)/((alpha-0.5)*math.sqrt(2*lamb)*special.beta(alpha, 0.5))
@@ -129,11 +130,9 @@ class BQLearning(object):
             a[i]=np.argmax(means)
         return a
         
-def simulate():
+def simulate(env_name):
     # Initialize the  environment
-    #name="FrozenLake-v0"
-    name="NChain-v0"
-    env = gym.make(name)
+    env = gym.make(env_name)
     NUM_STATES=env.observation_space.n
     NUM_ACTIONS=env.action_space.n
     agent=BQLearning(sh=(NUM_STATES, NUM_ACTIONS))
@@ -143,7 +142,7 @@ def simulate():
     #method=agent.MYOPIC_VPI
     total_score=0
     print("Initial V:")
-    print_V_function(agent.get_v_function(), agent.NUM_STATES, name)
+    print_V_function(agent.get_v_function(), agent.NUM_STATES,env_name)
     for episode in range(NUM_EPISODES):
         # Reset the environment
         obv = env.reset()
@@ -169,8 +168,8 @@ def simulate():
                break
         total_score+=score
     print("Total score is %d" % (total_score))
-    print_V_function(agent.get_v_function(), agent.NUM_STATES, name)
-    print_best_actions(agent.get_best_actions(), agent.NUM_STATES, name)
+    print_V_function(agent.get_v_function(), agent.NUM_STATES, env_name)
+    print_best_actions(agent.get_best_actions(), agent.NUM_STATES,env_name)
 
 def getCumulativeDistribution(mean, lamb, alpha, beta, x):
     rv=t(2*alpha)
@@ -216,5 +215,13 @@ def print_best_actions(V, num_states, name):
             print(l)
 
 if __name__ == "__main__":
-    simulate()
+    argv=sys.argv
+    if len(argv)<2:
+        env_name="FrozenLake-v0"
+    elif argv[1] in ["NChain-v0", "FrozenLake-v0"]:
+        env_name=argv[1]
+    else:
+        env_name="FrozenLake-v0"
+    print("Testing on environment "+env_name)
+    simulate(env_name)
    
