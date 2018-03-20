@@ -28,9 +28,9 @@ class BQLearning(object):
         self.NG = np.zeros(shape=sh,  dtype=(float,4))
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
-                self.NG[state][action][3]=1
-                self.NG[state][action][2]=1.1#alpha>1 ensures the normal-gamma dist is well defined
-                self.NG[state][action][3]=10
+                self.NG[state][action][1]=1
+                self.NG[state][action][2]=1.1  #alpha>1 ensures the normal-gamma dist is well defined
+                self.NG[state][action][3]=100 #high beta to increase the variance of the prior distribution to explore more
         
     def update(self, state, action, reward, next_state, method=0):
         if method==self.MOMENT_UPDATING:
@@ -138,8 +138,8 @@ def simulate(env_name, num_episodes):
     agent=BQLearning(sh=(NUM_STATES, NUM_ACTIONS))
     NUM_EPISODES=num_episodes
     MAX_T=100
-    method=agent.Q_VALUE_SAMPLING
-    #method=agent.MYOPIC_VPI
+    #method=agent.Q_VALUE_SAMPLING
+    method=agent.MYOPIC_VPI
     total_score=0
     print("Initial V:")
     print_V_function(agent.get_v_function(), agent.NUM_STATES,env_name)
