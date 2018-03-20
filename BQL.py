@@ -28,9 +28,9 @@ class BQLearning(object):
         self.NG = np.zeros(shape=sh,  dtype=(float,4))
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
-                self.NG[state][action][1]=0.1 #low precision
-                self.NG[state][action][2]=1.1#alpha>1 ensures the normal-gamma dist is well defined
                 self.NG[state][action][3]=1
+                self.NG[state][action][2]=1.1#alpha>1 ensures the normal-gamma dist is well defined
+                self.NG[state][action][3]=10
         
     def update(self, state, action, reward, next_state, method=0):
         if method==self.MOMENT_UPDATING:
@@ -130,13 +130,13 @@ class BQLearning(object):
             a[i]=np.argmax(means)
         return a
         
-def simulate(env_name):
+def simulate(env_name, num_episodes):
     # Initialize the  environment
     env = gym.make(env_name)
     NUM_STATES=env.observation_space.n
     NUM_ACTIONS=env.action_space.n
     agent=BQLearning(sh=(NUM_STATES, NUM_ACTIONS))
-    NUM_EPISODES=10000
+    NUM_EPISODES=num_episodes
     MAX_T=100
     method=agent.Q_VALUE_SAMPLING
     #method=agent.MYOPIC_VPI
@@ -217,11 +217,17 @@ def print_best_actions(V, num_states, name):
 if __name__ == "__main__":
     argv=sys.argv
     if len(argv)<2:
+        print("usage BQL.py <env_name> <num_episodes>")
         env_name="FrozenLake-v0"
     elif argv[1] in ["NChain-v0", "FrozenLake-v0"]:
         env_name=argv[1]
     else:
         env_name="FrozenLake-v0"
+    if len(argv)>2:
+        num_episodes=int(argv[2])
+    else:
+        print("Executing 1000 episodes")
+        num_episodes=1000
     print("Testing on environment "+env_name)
-    simulate(env_name)
+    simulate(env_name, num_episodes)
    
