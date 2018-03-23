@@ -4,8 +4,11 @@ import random
 import math
 from scipy.stats import t
 from scipy import special
+from scipy import integrate
+import matplotlib.pyplot as plt
 import sys
-discount_factor = 0.99 
+from scipy.stats import norm
+discount_factor = 0.99
 
 class BQLearning(object):
     """
@@ -61,8 +64,86 @@ class BQLearning(object):
         NG[state][action][3]=beta+0.5*(M2-M1**2)+(lamb*(M1-mean)**2)/(2*(lamb+1))
     
     def mixture_updating(self, state, action, reward, next_state):
-        print("To be Implemented")
+        NG=self.NG
+        mean=NG[state][action][0]
+        lamb=NG[state][action][1]
+        alpha=NG[state][action][2]
+        beta=NG[state][action][3]
+        #find best action at next state
+        means=NG[next_state, :, 0]
+        next_action=np.argmax(means)
+        mean_next=NG[state][next_action][0]
+        lamb_next=NG[state][next_action][1]
+        alpha_next=NG[state][next_action][2]
+        beta_next=NG[state][next_action][3]
+        ETau, err=integrate.quad(self.getExpectedTau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
+        EMuTau, err=integrate.quad(self.getExpectedMuTau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
+        EMu2Tau, err=integrate.quad(self.getExpectedMu2Tau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
+        ELogTau, err=integrate.quad(self.getExpectedLogTau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
+        NG[state][action][0]=EMuTau/ETau
+        NG[state][action][1]=1/(EMu2Tau-ETau*mean**2)
+        NG[state][action][2]=max(1.01, self.f(math.log(ETau)-ELogTau, num_iterations=20))
+        NG[state][action][3]=alpha/ETau
     
+    def getExpectedTau(self, Rt, r, mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
+        M1=r+discount_factor*Rt
+        M2=r**2+2*discount_factor*r*Rt+discount_factor**2*Rt**2
+        mean=(lamb*mean+M1)/(lamb)
+        lamb=lamb+1
+        alpha=alpha+0.5
+        beta=beta+0.5*(M2-M1**2)+(lamb*(M1-mean)**2)/(2*(lamb+1))
+        ETau=alpha/beta
+        PRt=norm(mean2,1/(math.sqrt(alpha2/beta2))).pdf(Rt) 
+        return ETau*PRt
+    
+    def getExpectedMuTau(self,Rt, r,  mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
+        M1=r+discount_factor*Rt
+        M2=r**2+2*discount_factor*r*Rt+discount_factor**2*Rt**2
+        mean=(lamb*mean+M1)/(lamb)
+        lamb=lamb+1
+        alpha=alpha+0.5
+        beta=beta+0.5*(M2-M1**2)+(lamb*(M1-mean)**2)/(2*(lamb+1))
+        EMuTau=(mean*alpha)/beta
+        PRt=norm(mean2,1/(math.sqrt(alpha2/beta2))).pdf(Rt)
+        return EMuTau*PRt
+    
+    def getExpectedMu2Tau(self,Rt, r,  mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
+        M1=r+discount_factor*Rt
+        M2=r**2+2*discount_factor*r*Rt+discount_factor**2*Rt**2
+        mean=(lamb*mean+M1)/(lamb)
+        lamb=lamb+1
+        alpha=alpha+0.5
+        beta=beta+0.5*(M2-M1**2)+(lamb*(M1-mean)**2)/(2*(lamb+1))
+        EMu2Tau=(1/lamb)+(mean**2*alpha)/beta
+        PRt=norm(mean2,1/(math.sqrt(alpha2/beta2))).pdf(Rt)
+        return EMu2Tau*PRt
+    
+    def getExpectedLogTau(self,Rt, r, mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
+        M1=r+discount_factor*Rt
+        M2=r**2+2*discount_factor*r*Rt+discount_factor**2*Rt**2
+        mean=(lamb*mean+M1)/(lamb)
+        lamb=lamb+1
+        alpha=alpha+0.5
+        beta=beta+0.5*(M2-M1**2)+(lamb*(M1-mean)**2)/(2*(lamb+1))
+        ELogTau=special.digamma(alpha)+np.log(beta)
+        PRt=norm(mean2,1/(math.sqrt(alpha2/beta2))).pdf(Rt)
+        return ELogTau*PRt
+    
+    def f(self, X, num_iterations):
+        #initialize Y
+        if X>=1.79:
+            Y=(-0.5*np.exp(X))/(1-np.exp(X))
+        else:
+            Y=1
+        for i in range(num_iterations):
+            Y=-1/(X+special.digamma(1))
+        return Y
+    
+    def g(self, X):
+       return math.log(abs(X)) - special.digamma(X)
+    
+    def derG(self, X):
+        return 1/X-special.polygamma(1, X)
     def select_action(self, state, method=0):
         if method==self.Q_VALUE_SAMPLING:
             return self.Q_sampling_action_selection(self.NG, state)
@@ -70,7 +151,7 @@ class BQLearning(object):
             return self.Myopic_VPI_action_selection(self.NG, state)
         else :
             print("Random Action");
-            return random.randint(0, self.NUM_ACTIONS)
+            return random.randint(0, self.NUM_ACTIONS-1)
     
     def Q_sampling_action_selection(self, NG, state):
         #Sample one value for each action
@@ -130,17 +211,22 @@ class BQLearning(object):
             a[i]=np.argmax(means)
         return a
         
-def simulate(env_name, num_episodes):
+def simulate(env_name, num_episodes, len_episode):
     # Initialize the  environment
     env = gym.make(env_name)
     NUM_STATES=env.observation_space.n
     NUM_ACTIONS=env.action_space.n
     agent=BQLearning(sh=(NUM_STATES, NUM_ACTIONS))
     NUM_EPISODES=num_episodes
-    MAX_T=100
-    #method=agent.Q_VALUE_SAMPLING
-    method=agent.MYOPIC_VPI
-    total_score=0
+    MAX_T=len_episode
+    #selection_method=agent.Q_VALUE_SAMPLING
+    selection_method=agent.MYOPIC_VPI
+    #update_method=agent.MOMENT_UPDATING
+    update_method=agent.MIXTURE_UPDATING
+    scores=np.zeros(NUM_EPISODES)
+    rewards=np.zeros(MAX_T)
+    rewardsToGo=np.zeros(MAX_T)
+    print("Running %d episodes of %d steps"%(num_episodes, len_episode))
     print("Initial V:")
     print_V_function(agent.get_v_function(), agent.NUM_STATES,env_name)
     for episode in range(NUM_EPISODES):
@@ -153,24 +239,31 @@ def simulate(env_name, num_episodes):
         for i in range(MAX_T):
             #env.render()
             # Select an action , specify method if needed
-            action = agent.select_action(state_0,method)
+            action = agent.select_action(state_0,selection_method)
             # Execute the action
             obv, reward, done, _ = env.step(action)
             score+=reward
+            rewards[i]=reward
             # Observe the result
             state = obv
             # Update the Q based on the result
-            agent.update(state_0, action, reward, state)
+            agent.update(state_0, action, reward, state, update_method)
             # Setting up for the next iteration
             state_0 = state
             if done:
                #print("Episode %d finished after %f time steps, score=%d" % (episode, t, score))
                break
-        total_score+=score
-    print("Total score is %d" % (total_score))
+        for i in range(MAX_T):
+            for j in range(i, MAX_T):
+                rewardsToGo[i]+=rewards[j]*discount_factor**(j-i)
+        scores[episode]=score
+    for i in range(MAX_T):
+        rewardsToGo[i]=rewardsToGo[i]/NUM_EPISODES
+    print("Avg Score score is %f Standard Deviation is %f" % (np.mean(scores), np.std(scores)))
     print_V_function(agent.get_v_function(), agent.NUM_STATES, env_name)
     print_best_actions(agent.get_best_actions(), agent.NUM_STATES,env_name)
-
+    plt.plot(range(MAX_T), rewardsToGo)
+    plt.show()
 def getCumulativeDistribution(mean, lamb, alpha, beta, x):
     rv=t(2*alpha)
     return rv.cdf((x-mean)*math.sqrt((lamb*alpha)/beta))
@@ -217,7 +310,7 @@ def print_best_actions(V, num_states, name):
 if __name__ == "__main__":
     argv=sys.argv
     if len(argv)<2:
-        print("usage BQL.py <env_name> <num_episodes>")
+        print("usage BQL.py <env_name> <num_episodes> <len_episode>")
         env_name="FrozenLake-v0"
     elif argv[1] in ["NChain-v0", "FrozenLake-v0"]:
         env_name=argv[1]
@@ -228,6 +321,11 @@ if __name__ == "__main__":
     else:
         print("Executing 1000 episodes")
         num_episodes=1000
+    if len(argv)>3:
+        len_episode=int(argv[3])
+    else:
+        print("Executing 100 step episodes")
+        len_episode=100
     print("Testing on environment "+env_name)
-    simulate(env_name, num_episodes)
+    simulate(env_name, num_episodes, len_episode)
    
