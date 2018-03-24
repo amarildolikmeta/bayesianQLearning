@@ -10,12 +10,8 @@ import sys
 from scipy.stats import norm
 discount_factor = 0.99
 
-class BQLearning(object):
-    """
-     Bayesian Q-Learning algorithm.
-    "Bayesian Q-learning". Dearden,Friedman,Russell. 1998.
-    """
-    def __init__(self, sh):
+class GBQLearning(object):
+    def __init__(self, sh, tau=0.1):
         #ACTION SELECTION TYPE
         self.Q_VALUE_SAMPLING=0
         self.MYOPIC_VPI=1
@@ -26,14 +22,12 @@ class BQLearning(object):
 
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
-        
+        self.tau=tau
         #initialize the distributions
-        self.NG = np.zeros(shape=sh,  dtype=(float,4))
+        self.NG = np.zeros(shape=sh,  dtype=(float,2))
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
-                self.NG[state][action][1]=1
-                self.NG[state][action][2]=1.1  #alpha>1 ensures the normal-gamma dist is well defined
-                self.NG[state][action][3]=100 #high beta to increase the variance of the prior distribution to explore more
+                self.NG[state][action][1]=0.1
         
     def update(self, state, action, reward, next_state, method=0):
         if method==self.MOMENT_UPDATING:
@@ -44,106 +38,20 @@ class BQLearning(object):
     def moment_updating(self, state, action, reward, next_state):
         NG=self.NG
         mean=NG[state][action][0]
-        lamb=NG[state][action][1]
-        alpha=NG[state][action][2]
-        beta=NG[state][action][3]
+        tau=NG[state][action][1]
         #find best action at next state
         means=NG[next_state, :, 0]
         next_action=np.argmax(means)
         mean_next=NG[state][next_action][0]
-        lamb_next=NG[state][next_action][1]
-        alpha_next=NG[state][next_action][2]
-        beta_next=NG[state][next_action][3]
-        #calculate the first two moments of the cumulative reward of the next state
-        M1=reward+discount_factor*mean_next
-        M2=reward**2+2*discount_factor*reward*mean_next+discount_factor**2*(((lamb_next+1)*beta_next)/(lamb_next*(alpha_next-1))+mean_next**2)
+        #calculate expected reward
+        Rt=reward+discount_factor*mean_next
         #update the distribution (n=1??)
-        NG[state][action][0]=(lamb*mean+M1)/(lamb)
-        NG[state][action][1]=lamb+1
-        NG[state][action][2]=alpha+0.5
-        NG[state][action][3]=beta+0.5*(M2-M1**2)+(lamb*(M1-mean)**2)/(2*(lamb+1))
+        NG[state][action][0]=(mean*tau+self.tau*Rt)/(tau+self.tau)
+        NG[state][action][1]=tau+self.tau
     
     def mixture_updating(self, state, action, reward, next_state):
-        NG=self.NG
-        mean=NG[state][action][0]
-        lamb=NG[state][action][1]
-        alpha=NG[state][action][2]
-        beta=NG[state][action][3]
-        #find best action at next state
-        means=NG[next_state, :, 0]
-        next_action=np.argmax(means)
-        mean_next=NG[state][next_action][0]
-        lamb_next=NG[state][next_action][1]
-        alpha_next=NG[state][next_action][2]
-        beta_next=NG[state][next_action][3]
-        ETau, err=integrate.quad(self.getExpectedTau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
-        EMuTau, err=integrate.quad(self.getExpectedMuTau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
-        EMu2Tau, err=integrate.quad(self.getExpectedMu2Tau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
-        ELogTau, err=integrate.quad(self.getExpectedLogTau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
-        NG[state][action][0]=EMuTau/ETau
-        NG[state][action][1]=1/(EMu2Tau-ETau*mean**2)
-        NG[state][action][2]=max(1.01, self.f(math.log(ETau)-ELogTau, num_iterations=20))
-        NG[state][action][3]=float(alpha/ETau)
+        print("To be implemented")
     
-    def getExpectedTau(self, Rt, r, mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
-        M1=r+discount_factor*Rt
-        M2=r**2+2*discount_factor*r*Rt+discount_factor**2*Rt**2
-        mean=(lamb*mean+M1)/(lamb)
-        lamb=lamb+1
-        alpha=alpha+0.5
-        beta=beta+0.5*(M2-M1**2)+(lamb*(M1-mean)**2)/(2*(lamb+1))
-        ETau=alpha/beta
-        PRt=norm(mean2,1/(math.sqrt(alpha2/beta2))).pdf(Rt) 
-        return ETau*PRt
-    
-    def getExpectedMuTau(self,Rt, r,  mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
-        M1=r+discount_factor*Rt
-        M2=r**2+2*discount_factor*r*Rt+discount_factor**2*Rt**2
-        mean=(lamb*mean+M1)/(lamb)
-        lamb=lamb+1
-        alpha=alpha+0.5
-        beta=beta+0.5*(M2-M1**2)+(lamb*(M1-mean)**2)/(2*(lamb+1))
-        EMuTau=(mean*alpha)/beta
-        PRt=norm(mean2,1/(math.sqrt(alpha2/beta2))).pdf(Rt)
-        return EMuTau*PRt
-    
-    def getExpectedMu2Tau(self,Rt, r,  mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
-        M1=r+discount_factor*Rt
-        M2=r**2+2*discount_factor*r*Rt+discount_factor**2*Rt**2
-        mean=(lamb*mean+M1)/(lamb)
-        lamb=lamb+1
-        alpha=alpha+0.5
-        beta=beta+0.5*(M2-M1**2)+(lamb*(M1-mean)**2)/(2*(lamb+1))
-        EMu2Tau=(1/lamb)+(mean**2*alpha)/beta
-        PRt=norm(mean2,1/(math.sqrt(alpha2/beta2))).pdf(Rt)
-        return EMu2Tau*PRt
-    
-    def getExpectedLogTau(self,Rt, r, mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
-        M1=r+discount_factor*Rt
-        M2=r**2+2*discount_factor*r*Rt+discount_factor**2*Rt**2
-        mean=(lamb*mean+M1)/(lamb)
-        lamb=lamb+1
-        alpha=alpha+0.5
-        beta=beta+0.5*(M2-M1**2)+(lamb*(M1-mean)**2)/(2*(lamb+1))
-        ELogTau=special.digamma(alpha)+np.log(beta)
-        PRt=norm(mean2,1/(math.sqrt(alpha2/beta2))).pdf(Rt)
-        return ELogTau*PRt
-    
-    def f(self, X, num_iterations):
-        #initialize Y
-        if X>=1.79:
-            Y=(-0.5*np.exp(X))/(1-np.exp(X))
-        else:
-            Y=1
-        for i in range(num_iterations):
-            Y=-1/(X+special.digamma(1))
-        return Y
-    
-    def g(self, X):
-       return math.log(abs(X)) - special.digamma(X)
-    
-    def derG(self, X):
-        return 1/X-special.polygamma(1, X)
     def select_action(self, state, method=0):
         if method==self.Q_VALUE_SAMPLING:
             return self.Q_sampling_action_selection(self.NG, state)
@@ -158,13 +66,13 @@ class BQLearning(object):
         samples=np.zeros(self.NUM_ACTIONS)
         for i in range(self.NUM_ACTIONS):
             mean=NG[state][i][0]
-            lamb=NG[state][i][1]
-            alpha=NG[state][i][2]
-            beta=NG[state][i][3]
-            samples[i]=self.sample_NG(mean,lamb,alpha,beta)[0]
+            tau=NG[state][i][1]
+            samples[i]=self.sample_NG(mean,tau)
         return np.argmax((samples)) 
     
     def Myopic_VPI_action_selection(self, NG, state):
+        ##To be implemented
+        return random.randint(0, self.NUM_ACTIONS-1)
         #get best and second best action
         means=NG[state, :, 0]
         ranking=np.zeros(self.NUM_ACTIONS)
@@ -185,12 +93,9 @@ class BQLearning(object):
                 ranking[i]= c +(mean-means[best_action])*(1-getCumulativeDistribution(mean, lamb, alpha, beta,means[best_action]))+mean
         return np.argmax(ranking)
 
-    def sample_NG(self, mean, lamb, alpha,beta):
-        ##Sample x from a normal distribution with mean μ and variance 1 / ( λ τ ) 
-        ##Sample τ from a gamma distribution with parameters alpha and beta 
-        tau=np.random.gamma(alpha, beta)
-        R=np.random.normal(mean, 1.0/(lamb*tau))
-        return R, tau
+    def sample_NG(self, mean, tau):
+        R=np.random.normal(mean, 1.0/(tau))
+        return R
     
     def get_c_value(self, mean, lamb, alpha, beta):
         c=math.sqrt(beta)/((alpha-0.5)*math.sqrt(2*lamb)*special.beta(alpha, 0.5))
@@ -216,13 +121,13 @@ def simulate(env_name, num_episodes, len_episode):
     env = gym.make(env_name)
     NUM_STATES=env.observation_space.n
     NUM_ACTIONS=env.action_space.n
-    agent=BQLearning(sh=(NUM_STATES, NUM_ACTIONS))
+    agent=GBQLearning(sh=(NUM_STATES, NUM_ACTIONS))
     NUM_EPISODES=num_episodes
     MAX_T=len_episode
-    #selection_method=agent.Q_VALUE_SAMPLING
-    selection_method=agent.MYOPIC_VPI
-    #update_method=agent.MOMENT_UPDATING
-    update_method=agent.MIXTURE_UPDATING
+    selection_method=agent.Q_VALUE_SAMPLING
+    #selection_method=agent.MYOPIC_VPI
+    update_method=agent.MOMENT_UPDATING
+    #update_method=agent.MIXTURE_UPDATING
     scores=np.zeros(NUM_EPISODES)
     rewards=np.zeros(MAX_T)
     rewardsToGo=np.zeros(MAX_T)
