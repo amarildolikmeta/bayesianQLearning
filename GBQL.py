@@ -4,14 +4,12 @@ import random
 import math
 from scipy.stats import t
 from scipy import special
-from scipy import integrate
 import matplotlib.pyplot as plt
 import sys
-from scipy.stats import norm
 discount_factor = 0.99
 
 class GBQLearning(object):
-    def __init__(self, sh, tau=0.1):
+    def __init__(self, sh, tau=0.5):
         #ACTION SELECTION TYPE
         self.Q_VALUE_SAMPLING=0
         self.MYOPIC_VPI=1
@@ -27,7 +25,7 @@ class GBQLearning(object):
         self.NG = np.zeros(shape=sh,  dtype=(float,2))
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
-                self.NG[state][action][1]=0.1
+                self.NG[state][action][1]=1
         
     def update(self, state, action, reward, next_state, method=0):
         if method==self.MOMENT_UPDATING:
@@ -43,14 +41,25 @@ class GBQLearning(object):
         means=NG[next_state, :, 0]
         next_action=np.argmax(means)
         mean_next=NG[state][next_action][0]
+        tau_next=self.tau
         #calculate expected reward
         Rt=reward+discount_factor*mean_next
         #update the distribution (n=1??)
-        NG[state][action][0]=(mean*tau+self.tau*Rt)/(tau+self.tau)
-        NG[state][action][1]=tau+self.tau
+        NG[state][action][0]=(mean*tau+tau_next*Rt/(discount_factor**2))/(tau+(tau_next/(discount_factor**2)))
+        NG[state][action][1]=tau+(tau_next/(discount_factor**2))
     
     def mixture_updating(self, state, action, reward, next_state):
-        print("To be implemented")
+        NG=self.NG
+        mean=NG[state][action][0]
+        tau=NG[state][action][1]
+        #find best action at next state
+        means=NG[next_state, :, 0]
+        next_action=np.argmax(means)
+        mean_next=NG[state][next_action][0]
+        tau_next=NG[state][next_action][1]
+        Rt=reward+discount_factor*mean_next
+        NG[state][action][0]=Rt-(tau*mean)/(tau+(self.tau/(discount_factor**2)))
+        NG[state][action][1]=((tau+self.tau/discount_factor)*self.tau*tau_next)/(self.tau*tau_next)
     
     def select_action(self, state, method=0):
         if method==self.Q_VALUE_SAMPLING:
@@ -71,8 +80,6 @@ class GBQLearning(object):
         return np.argmax((samples)) 
     
     def Myopic_VPI_action_selection(self, NG, state):
-        ##To be implemented
-        return random.randint(0, self.NUM_ACTIONS-1)
         #get best and second best action
         means=NG[state, :, 0]
         ranking=np.zeros(self.NUM_ACTIONS)
@@ -80,17 +87,19 @@ class GBQLearning(object):
         indexes=ind[np.argsort(means[ind])]
         best_action=indexes[1]
         second_best=indexes[0]
+        mean1=mean2=NG[state][best_action][0]
+        mean2=NG[state][second_best][0]
         for i in range(self.NUM_ACTIONS):
             mean=NG[state][i][0]
-            lamb=NG[state][i][1]
-            alpha=NG[state][i][2]
-            beta=NG[state][i][3]
-            mean2=NG[state][second_best][0]
-            c=self.get_c_value(mean, lamb, alpha, beta)
+            tau=NG[state][i][1]
             if i==best_action:
-                ranking[i]= c +(mean2-mean)*getCumulativeDistribution(mean, lamb, alpha, beta, mean2)+mean
+                c=math.sqrt(1/(2*math.pi*tau))*math.exp(-0.5*tau*(mean-mean2)**2)
+                vpi=c+0.5*(mean2-mean)*(special.erf(math.sqrt(0.5*tau)*(mean-mean2))-1)
+                ranking[i]=vpi+mean
             else :
-                ranking[i]= c +(mean-means[best_action])*(1-getCumulativeDistribution(mean, lamb, alpha, beta,means[best_action]))+mean
+                c=math.sqrt(1/(2*math.pi*tau))*math.exp(-0.5*tau*(mean-mean1)**2)
+                vpi=c+0.5*(mean-mean1)*(1-special.erf(math.sqrt(0.5*tau)*(mean-mean1)))
+                ranking[i]=vpi+mean
         return np.argmax(ranking)
 
     def sample_NG(self, mean, tau):
@@ -124,10 +133,10 @@ def simulate(env_name, num_episodes, len_episode):
     agent=GBQLearning(sh=(NUM_STATES, NUM_ACTIONS))
     NUM_EPISODES=num_episodes
     MAX_T=len_episode
-    selection_method=agent.Q_VALUE_SAMPLING
-    #selection_method=agent.MYOPIC_VPI
-    update_method=agent.MOMENT_UPDATING
-    #update_method=agent.MIXTURE_UPDATING
+    #selection_method=agent.Q_VALUE_SAMPLING
+    selection_method=agent.MYOPIC_VPI
+    #update_method=agent.MOMENT_UPDATING
+    update_method=agent.MIXTURE_UPDATING
     scores=np.zeros(NUM_EPISODES)
     rewards=np.zeros(MAX_T)
     rewardsToGo=np.zeros(MAX_T)
