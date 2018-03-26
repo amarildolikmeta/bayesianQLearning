@@ -98,7 +98,7 @@ class GBQLearning(object):
                 ranking[i]=vpi+mean
             else :
                 c=math.sqrt(1/(2*math.pi*tau))*math.exp(-0.5*tau*(mean-mean1)**2)
-                vpi=c+0.5*(mean-mean1)*(1-special.erf(math.sqrt(0.5*tau)*(mean-mean1)))
+                vpi=c+0.5*(mean-mean1)*(-1-special.erf(math.sqrt(0.5*tau)*(mean-mean1)))
                 ranking[i]=vpi+mean
         return np.argmax(ranking)
 
