@@ -9,7 +9,7 @@ import sys
 discount_factor = 0.99
 
 class GBQLearning(object):
-    def __init__(self, sh, tau=0.5):
+    def __init__(self, sh, tau=1):
         #ACTION SELECTION TYPE
         self.Q_VALUE_SAMPLING=0
         self.MYOPIC_VPI=1
@@ -26,6 +26,7 @@ class GBQLearning(object):
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
                 self.NG[state][action][1]=1
+                self.NG[state][action][0]=10
         
     def update(self, state, action, reward, next_state, method=0):
         if method==self.MOMENT_UPDATING:
@@ -58,8 +59,8 @@ class GBQLearning(object):
         mean_next=NG[state][next_action][0]
         tau_next=NG[state][next_action][1]
         Rt=reward+discount_factor*mean_next
-        NG[state][action][0]=Rt-(tau*mean)/(tau+(self.tau/(discount_factor**2)))
-        NG[state][action][1]=((tau+self.tau/discount_factor)*self.tau*tau_next)/(self.tau*tau_next)
+        NG[state][action][0]=Rt+((tau*mean)/(tau+(self.tau/(discount_factor**2))))
+        NG[state][action][1]=((tau+(self.tau/discount_factor))*self.tau*tau_next)/(self.tau+tau_next)
     
     def select_action(self, state, method=0):
         if method==self.Q_VALUE_SAMPLING:
@@ -158,6 +159,9 @@ def simulate(env_name, num_episodes, len_episode):
             obv, reward, done, _ = env.step(action)
             score+=reward
             rewards[i]=reward
+            if env_name in ["FrozenLake-v0"]:
+                if reward==1:
+                    print("Goal Reached")
             # Observe the result
             state = obv
             # Update the Q based on the result
@@ -165,7 +169,7 @@ def simulate(env_name, num_episodes, len_episode):
             # Setting up for the next iteration
             state_0 = state
             if done:
-               #print("Episode %d finished after %f time steps, score=%d" % (episode, t, score))
+               #print("Episode %d finished after %f time steps, score=%d" % (episode, i, score))
                break
         for i in range(MAX_T):
             for j in range(i, MAX_T):
@@ -173,7 +177,8 @@ def simulate(env_name, num_episodes, len_episode):
         scores[episode]=score
     for i in range(MAX_T):
         rewardsToGo[i]=rewardsToGo[i]/NUM_EPISODES
-    print("Avg Score score is %f Standard Deviation is %f" % (np.mean(scores), np.std(scores)))
+    print("Avg  score is %f Standard Deviation is %f" % (np.mean(scores), np.std(scores)))
+    print("Max  score is %f" % (np.max(scores)))
     print_V_function(agent.get_v_function(), agent.NUM_STATES, env_name)
     print_best_actions(agent.get_best_actions(), agent.NUM_STATES,env_name)
     plt.plot(range(MAX_T), rewardsToGo)
