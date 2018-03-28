@@ -9,7 +9,7 @@ import sys
 discount_factor = 0.99
 
 class GBQLearning(object):
-    def __init__(self, sh, tau=1):
+    def __init__(self, sh, gamma=0.99, tau=1):
         #ACTION SELECTION TYPE
         self.Q_VALUE_SAMPLING=0
         self.MYOPIC_VPI=1
@@ -20,15 +20,16 @@ class GBQLearning(object):
 
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
+        self.discount_factor=gamma
         self.tau=tau
         #initialize the distributions
         self.NG = np.zeros(shape=sh,  dtype=(float,2))
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
                 self.NG[state][action][1]=1
-                self.NG[state][action][0]=10
+                self.NG[state][action][0]=0
         
-    def update(self, state, action, reward, next_state, method=0):
+    def update(self, state, action, reward, next_state, method=1):
         if method==self.MOMENT_UPDATING:
             self.moment_updating(state, action, reward, next_state)
         else :
@@ -44,10 +45,10 @@ class GBQLearning(object):
         mean_next=NG[state][next_action][0]
         tau_next=self.tau
         #calculate expected reward
-        Rt=reward+discount_factor*mean_next
+        Rt=reward+self.discount_factor*mean_next
         #update the distribution (n=1??)
-        NG[state][action][0]=(mean*tau+tau_next*Rt/(discount_factor**2))/(tau+(tau_next/(discount_factor**2)))
-        NG[state][action][1]=tau+(tau_next/(discount_factor**2))
+        NG[state][action][0]=(mean*tau+tau_next*Rt/(self.discount_factor**2))/(tau+(tau_next/(self.discount_factor**2)))
+        NG[state][action][1]=tau+(tau_next/(self.discount_factor**2))
     
     def mixture_updating(self, state, action, reward, next_state):
         NG=self.NG
@@ -56,13 +57,13 @@ class GBQLearning(object):
         #find best action at next state
         means=NG[next_state, :, 0]
         next_action=np.argmax(means)
-        mean_next=NG[state][next_action][0]
-        tau_next=NG[state][next_action][1]
-        Rt=reward+discount_factor*mean_next
-        NG[state][action][0]=Rt+((tau*mean)/(tau+(self.tau/(discount_factor**2))))
-        NG[state][action][1]=((tau+(self.tau/discount_factor))*self.tau*tau_next)/(self.tau+tau_next)
+        mean_next=NG[next_state][next_action][0]
+        tau_next=NG[next_state][next_action][1]
+        Rt=reward+self.discount_factor*mean_next
+        NG[state][action][0]=Rt+((tau*mean)/(tau+(self.tau/(self.discount_factor**2))))
+        NG[state][action][1]=((tau+(self.tau/self.discount_factor))*self.tau*tau_next)/(self.tau+tau_next)
     
-    def select_action(self, state, method=0):
+    def select_action(self, state, method=1):
         if method==self.Q_VALUE_SAMPLING:
             return self.Q_sampling_action_selection(self.NG, state)
         elif method==self.MYOPIC_VPI:
@@ -94,11 +95,11 @@ class GBQLearning(object):
             mean=NG[state][i][0]
             tau=NG[state][i][1]
             if i==best_action:
-                c=math.sqrt(1/(2*math.pi*tau))*math.exp(-0.5*tau*(mean-mean2)**2)
+                c=np.sqrt(1/(2*np.pi*tau))*np.exp(-0.5*tau*(mean-mean2)**2)
                 vpi=c+0.5*(mean2-mean)*(special.erf(math.sqrt(0.5*tau)*(mean-mean2))-1)
                 ranking[i]=vpi+mean
             else :
-                c=math.sqrt(1/(2*math.pi*tau))*math.exp(-0.5*tau*(mean-mean1)**2)
+                c=np.sqrt(1/(2*np.pi*tau))*np.exp(-0.5*tau*(mean-mean1)**2)
                 vpi=c+0.5*(mean-mean1)*(-1-special.erf(math.sqrt(0.5*tau)*(mean-mean1)))
                 ranking[i]=vpi+mean
         return np.argmax(ranking)
@@ -159,9 +160,9 @@ def simulate(env_name, num_episodes, len_episode):
             obv, reward, done, _ = env.step(action)
             score+=reward
             rewards[i]=reward
-            if env_name in ["FrozenLake-v0"]:
-                if reward==1:
-                    print("Goal Reached")
+            #if env_name in ["FrozenLake-v0"]:
+            #    if reward==1:
+            #        print("Goal Reached")
             # Observe the result
             state = obv
             # Update the Q based on the result

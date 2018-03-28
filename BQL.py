@@ -15,7 +15,7 @@ class BQLearning(object):
      Bayesian Q-Learning algorithm.
     "Bayesian Q-learning". Dearden,Friedman,Russell. 1998.
     """
-    def __init__(self, sh):
+    def __init__(self, sh, gamma=0.99):
         #ACTION SELECTION TYPE
         self.Q_VALUE_SAMPLING=0
         self.MYOPIC_VPI=1
@@ -26,6 +26,7 @@ class BQLearning(object):
 
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
+        self.discount_factor=gamma
         
         #initialize the distributions
         self.NG = np.zeros(shape=sh,  dtype=(float,4))
@@ -55,8 +56,8 @@ class BQLearning(object):
         alpha_next=NG[state][next_action][2]
         beta_next=NG[state][next_action][3]
         #calculate the first two moments of the cumulative reward of the next state
-        M1=reward+discount_factor*mean_next
-        M2=reward**2+2*discount_factor*reward*mean_next+discount_factor**2*(((lamb_next+1)*beta_next)/(lamb_next*(alpha_next-1))+mean_next**2)
+        M1=reward+self.discount_factor*mean_next
+        M2=reward**2+2*self.discount_factor*reward*mean_next+self.discount_factor**2*(((lamb_next+1)*beta_next)/(lamb_next*(alpha_next-1))+mean_next**2)
         #update the distribution (n=1??)
         NG[state][action][0]=(lamb*mean+M1)/(lamb)
         NG[state][action][1]=lamb+1
@@ -86,8 +87,8 @@ class BQLearning(object):
         NG[state][action][3]=float(alpha/ETau)
     
     def getExpectedTau(self, Rt, r, mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
-        M1=r+discount_factor*Rt
-        M2=r**2+2*discount_factor*r*Rt+discount_factor**2*Rt**2
+        M1=r+self.discount_factor*Rt
+        M2=r**2+2*self.discount_factor*r*Rt+self.discount_factor**2*Rt**2
         mean=(lamb*mean+M1)/(lamb)
         lamb=lamb+1
         alpha=alpha+0.5
@@ -97,8 +98,8 @@ class BQLearning(object):
         return ETau*PRt
     
     def getExpectedMuTau(self,Rt, r,  mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
-        M1=r+discount_factor*Rt
-        M2=r**2+2*discount_factor*r*Rt+discount_factor**2*Rt**2
+        M1=r+self.discount_factor*Rt
+        M2=r**2+2*self.discount_factor*r*Rt+self.discount_factor**2*Rt**2
         mean=(lamb*mean+M1)/(lamb)
         lamb=lamb+1
         alpha=alpha+0.5
@@ -108,8 +109,8 @@ class BQLearning(object):
         return EMuTau*PRt
     
     def getExpectedMu2Tau(self,Rt, r,  mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
-        M1=r+discount_factor*Rt
-        M2=r**2+2*discount_factor*r*Rt+discount_factor**2*Rt**2
+        M1=r+self.discount_factor*Rt
+        M2=r**2+2*self.discount_factor*r*Rt+self.discount_factor**2*Rt**2
         mean=(lamb*mean+M1)/(lamb)
         lamb=lamb+1
         alpha=alpha+0.5
@@ -119,8 +120,8 @@ class BQLearning(object):
         return EMu2Tau*PRt
     
     def getExpectedLogTau(self,Rt, r, mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
-        M1=r+discount_factor*Rt
-        M2=r**2+2*discount_factor*r*Rt+discount_factor**2*Rt**2
+        M1=r+self.discount_factor*Rt
+        M2=r**2+2*self.discount_factor*r*Rt+self.discount_factor**2*Rt**2
         mean=(lamb*mean+M1)/(lamb)
         lamb=lamb+1
         alpha=alpha+0.5
@@ -144,7 +145,8 @@ class BQLearning(object):
     
     def derG(self, X):
         return 1/X-special.polygamma(1, X)
-    def select_action(self, state, method=0):
+        
+    def select_action(self, state, method=1):
         if method==self.Q_VALUE_SAMPLING:
             return self.Q_sampling_action_selection(self.NG, state)
         elif method==self.MYOPIC_VPI:
@@ -221,8 +223,8 @@ def simulate(env_name, num_episodes, len_episode):
     MAX_T=len_episode
     #selection_method=agent.Q_VALUE_SAMPLING
     selection_method=agent.MYOPIC_VPI
-    #update_method=agent.MOMENT_UPDATING
-    update_method=agent.MIXTURE_UPDATING
+    update_method=agent.MOMENT_UPDATING
+    #update_method=agent.MIXTURE_UPDATING
     scores=np.zeros(NUM_EPISODES)
     rewards=np.zeros(MAX_T)
     rewardsToGo=np.zeros(MAX_T)
