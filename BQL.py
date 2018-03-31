@@ -170,10 +170,7 @@ class BQLearning(object):
         #get best and second best action
         means=NG[state, :, 0]
         ranking=np.zeros(self.NUM_ACTIONS)
-        ind = np.argpartition(means, -2)[-2:]
-        indexes=ind[np.argsort(means[ind])]
-        best_action=indexes[1]
-        second_best=indexes[0]
+        best_action, second_best=self.get_2_best_actions(means)
         for i in range(self.NUM_ACTIONS):
             mean=NG[state][i][0]
             lamb=NG[state][i][1]
@@ -199,6 +196,19 @@ class BQLearning(object):
         c=c*math.pow(1+(mean**2/(2*alpha)), 0.5-alpha)
         return c
     
+    def get_2_best_actions(self, A):
+        max1=np.argmax(A[0:2])
+        max2=np.argmin(A[0:2])
+        if max2==max1 :
+            max2=(1-max1)%2
+        for i in range(2, len(A)):
+            if A[i]>=A[max1]:
+                max2=max1
+                max1=i
+            elif A[i]>=A[max2]:
+                max2=i
+        return max1, max2
+        
     def get_v_function(self):
         v=np.zeros(self.NUM_STATES)
         for i in range(self.NUM_STATES):
