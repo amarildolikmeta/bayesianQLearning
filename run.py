@@ -24,6 +24,8 @@ def simulate(env_name, num_episodes, len_episode, algorithm):
     print("Running %d episodes of %d steps"%(num_episodes, len_episode))
     print("Initial V:")
     print_V_function(agent.get_v_function(), agent.NUM_STATES,env_name)
+    #count how many times actions execute
+    counts=np.zeros(agent.NUM_ACTIONS)
     for episode in range(NUM_EPISODES):
         # Reset the environment
         obv = env.reset()
@@ -35,6 +37,7 @@ def simulate(env_name, num_episodes, len_episode, algorithm):
             #env.render()
             # Select an action 
             action = agent.select_action(state_0)
+            counts[action]=counts[action]+1
             # Execute the action
             obv, reward, done, _ = env.step(action)
             score+=reward
@@ -56,11 +59,13 @@ def simulate(env_name, num_episodes, len_episode, algorithm):
         rewardsToGo[i]=rewardsToGo[i]/NUM_EPISODES
     print("Avg  score is %f Standard Deviation is %f" % (np.mean(scores), np.std(scores)))
     print("Max  score is %f" % (np.max(scores)))
+    print("Action Counts:")
+    print(counts)
     print_V_function(agent.get_v_function(), agent.NUM_STATES, env_name)
     print_best_actions(agent.get_best_actions(), agent.NUM_STATES,env_name)
     plt.plot(range(MAX_T), rewardsToGo)
     plt.show()
-
+    print(agent.get_NG())
 def print_V_function(V, num_states, name):
     if name=="NChain-v0":
         print(V)
