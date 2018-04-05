@@ -9,7 +9,7 @@ import sys
 discount_factor = 0.99
 
 class GBQLearning(object):
-    def __init__(self, sh, gamma=0.99, tau=0.0000001, tau2=0.000001):
+    def __init__(self, sh, gamma=0.99, tau=0.000001, tau2=0.000001,selection_method=1, update_method=1):
         #ACTION SELECTION TYPE
         self.Q_VALUE_SAMPLING=0
         self.MYOPIC_VPI=1
@@ -24,6 +24,10 @@ class GBQLearning(object):
         self.discount_factor=gamma
         self.tau=tau
         self.delta=0.05
+        
+        self.t=0
+        self.selection_method=selection_method
+        self.update_method=update_method
         #initialize the distributions and counters
         self.NG = np.zeros(shape=sh,  dtype=(float,3))
         for state in range(self.NUM_STATES):
@@ -31,13 +35,15 @@ class GBQLearning(object):
                 self.NG[state][action][1]=tau2
                 self.NG[state][action][0]=0
         
-    def update(self, state, action, reward, next_state, method=1):
-        #update visit counter
+    def update(self, state, action, reward, next_state):
+        #update visit counter and time step counter
         self.NG[state][action][2]=self.NG[state][action][2]+1
-        if method==self.MOMENT_UPDATING:
+        self.t=self.t+1
+        if self.update_method==self.MOMENT_UPDATING:
             self.moment_updating(state, action, reward, next_state)
         else :
             self.mixture_updating(state, action, reward, next_state)
+        #self.update_tau()
             
     def moment_updating(self, state, action, reward, next_state):
         NG=self.NG
@@ -60,7 +66,7 @@ class GBQLearning(object):
         tau=NG[state][action][1]
         #find best action at next state
         means=NG[next_state, :, 0]
-        next_action=np.argmax(means)
+        next_action=self.getMax(means)
         mean_next=NG[next_state][next_action][0]
         tau_next=NG[next_state][next_action][1]
         tauP=(tau_next*self.tau)/(self.tau+tau_next)
@@ -68,12 +74,15 @@ class GBQLearning(object):
         NG[state][action][0]=(tauP*Rt+tau*mean*self.discount_factor**2)/(tauP+tau*(self.discount_factor**2))
         NG[state][action][1]=(tauP+(self.discount_factor**2)*tau)**2/((self.discount_factor**2)*(2*tauP+tau*(self.discount_factor**2)))
     
-    def select_action(self, state, method=1):
-        if method==self.Q_VALUE_SAMPLING:
+    def update_tau(self):
+        self.tau=np.exp(self.t/5000000)-1
+        
+    def select_action(self, state):
+        if self.selection_method==self.Q_VALUE_SAMPLING:
             return self.Q_sampling_action_selection(self.NG, state)
-        elif method==self.MYOPIC_VPI:
+        elif self.selection_method==self.MYOPIC_VPI:
             return self.Myopic_VPI_action_selection(self.NG, state)
-        elif method==self.UCB:
+        elif self.selection_method==self.UCB:
             return self.UCB_selection(self.NG, state)
         else :
             print("Random Action");
@@ -87,6 +96,13 @@ class GBQLearning(object):
             tau=NG[state][i][1]
             samples[i]=self.sample_NG(mean,tau)
         return self.getMax(samples) 
+    
+    def set_selection_method(self,  method=1):
+        if method in [self.Q_VALUE_SAMPLING,self.MYOPIC_VPI, self.UCB]:
+            self.selection_method=method
+    def set_update_method(self,  method=1):
+        if method in [self.MOMENT_UPDATING,self.MIXTURE_UPDATING]:
+            self.update_method=method
     
     def UCB_selection(self, NG, state):
         #Sample one value for each action
@@ -120,16 +136,9 @@ class GBQLearning(object):
         return self.getMax(ranking)
     
     def getMax(self, V):
-        #brake ties randomly
-        max=0
-        tie=True
-        for i in range(len(V)):
-            if V[i]>V[max]:
-                max=i
-                tie=False
-        if tie:
-            return random.randint(0, len(V)-1)
-        return max
+        #brake ties
+        maximums=np.where(V==np.max(V))[0]
+        return np.random.choice(maximums)
         
     def sample_NG(self, mean, tau):
         R=np.random.normal(mean, 1.0/(tau))
@@ -178,10 +187,9 @@ def simulate(env_name, num_episodes, len_episode, tau):
     agent=GBQLearning(sh=(NUM_STATES, NUM_ACTIONS), tau2=tau)
     NUM_EPISODES=num_episodes
     MAX_T=len_episode
-    #selection_method=agent.Q_VALUE_SAMPLING
-    selection_method=agent.MYOPIC_VPI
-    #update_method=agent.MOMENT_UPDATING
-    update_method=agent.MIXTURE_UPDATING
+    
+    agent.set_selection_method(agent.MYOPIC_VPI)
+    agent.set_update_method(agent.MIXTURE_UPDATING)
     scores=np.zeros(NUM_EPISODES)
     rewards=np.zeros(MAX_T)
     #print("Running %d episodes of %d steps"%(num_episodes, len_episode))
@@ -197,7 +205,7 @@ def simulate(env_name, num_episodes, len_episode, tau):
         for i in range(MAX_T):
             #env.render()
             # Select an action , specify method if needed
-            action = agent.select_action(state_0,selection_method)
+            action = agent.select_action(state_0)
             ##invert action to see if it will learn it
             if action==0:
                 action=1
@@ -213,7 +221,7 @@ def simulate(env_name, num_episodes, len_episode, tau):
             # Observe the result
             state = obv
             # Update the Q based on the result
-            agent.update(state_0, action, reward, state, update_method)
+            agent.update(state_0, action, reward, state)
             # Setting up for the next iteration
             state_0 = state
             if done:

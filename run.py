@@ -10,7 +10,7 @@ from QL import QLearning
 algs={"GBQL":GBQLearning, "BQL":BQLearning, "QL":QLearning}
 discount_factor=0.99
 
-def simulate(env_name, num_episodes, len_episode, algorithm):
+def simulate(env_name, num_episodes, len_episode, algorithm, reverse=True):
     # Initialize the  environment
     env = gym.make(env_name)
     NUM_STATES=env.observation_space.n
@@ -37,9 +37,14 @@ def simulate(env_name, num_episodes, len_episode, algorithm):
             #env.render()
             # Select an action 
             action = agent.select_action(state_0)
+            #reverse action to see if it still learns
+            if reverse:
+                exec_action=(action+1)%2
+            else:
+                exec_action=action
             counts[action]=counts[action]+1
             # Execute the action
-            obv, reward, done, _ = env.step(action)
+            obv, reward, done, _ = env.step(exec_action)
             score+=reward
             rewards[i]=reward
             # Observe the result
@@ -131,5 +136,9 @@ if __name__ == "__main__":
     else:
         print("Running BQL algorithm")
         alg="GBQL"
+    if len(argv)>5:
+        reverse=True
+    else:
+        reverse=False
     print("Testing on environment "+env_name)
-    simulate(env_name, num_episodes, len_episode, alg)
+    simulate(env_name, num_episodes, len_episode, alg, reverse)
