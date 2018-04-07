@@ -20,7 +20,7 @@ policy = vi.get_policy()
 print('True Qfunction %s' % Q)
 print('Optimal policy %s' % policy)
 
-max_iter = 500
+max_iter = 15000
 horizon = 100
 
 class EpsilonScheduler(scheduler.Scheduler):
@@ -72,4 +72,4 @@ ax.plot(utils.moving_average(sarsa.return_, ma_window), color='r', label='SARSA'
 ax.plot(utils.moving_average(esarsa.return_, ma_window), color='g', label='ExpectedSARSA')
 ax.plot(utils.moving_average(ql.return_, ma_window), color='b', label='Q-leanring')
 ax.legend(loc='lower right')
-#plt.show()
+plt.show()

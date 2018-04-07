@@ -7,22 +7,34 @@ from scipy import special
 from scipy import integrate
 import matplotlib.pyplot as plt
 import sys
+from algorithms.utils.utils import *
 from scipy.stats import norm
+from gym.envs.toy_text.frozen_lake import FrozenLakeEnv
+from envs.nchain_discrete import NChainEnv
+
 discount_factor = 0.99
+
+def normal_gamma_pdf(mu, tau, mu0, lambd, alpha, beta):
+    return beta ** alpha * np.sqrt(lambd) / (special.gamma(alpha) * np.sqrt(2*np.pi)) \
+           * tau ** (alpha - 0.5) * np.exp(-beta * tau) * np.exp(-0.5 * lambd * (mu - mu0) ** 2)
 
 class BQLearning(object):
     """
      Bayesian Q-Learning algorithm.
     "Bayesian Q-learning". Dearden,Friedman,Russell. 1998.
     """
+
+    #Those are class variables
+    # ACTION SELECTION TYPE
+    Q_VALUE_SAMPLING = 0
+    MYOPIC_VPI = 1
+
+    # POSTERIOR UPDATE
+    MOMENT_UPDATING = 0
+    MIXTURE_UPDATING = 1
+
     def __init__(self, sh, gamma=0.99):
-        #ACTION SELECTION TYPE
-        self.Q_VALUE_SAMPLING=0
-        self.MYOPIC_VPI=1
-        
-        #POSTERIOR UPDATE
-        self.MOMENT_UPDATING=0
-        self.MIXTURE_UPDATING=1
+
 
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
@@ -32,60 +44,111 @@ class BQLearning(object):
         self.NG = np.zeros(shape=sh,  dtype=(float,4))
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
-                self.NG[state][action][1]=1
-                self.NG[state][action][2]=1.1  #alpha>1 ensures the normal-gamma dist is well defined
-                self.NG[state][action][3]=100 #high beta to increase the variance of the prior distribution to explore more
+                self.NG[state][action][1]=1.#3.
+                self.NG[state][action][2]=1.1#1.5  #alpha>1 ensures the normal-gamma dist is well defined
+                self.NG[state][action][3]=100.#0.75 #high beta to increase the variance of the prior distribution to explore more
         
-    def update(self, state, action, reward, next_state, method=0):
+    def update(self, state, action, reward, next_state, done, method=0):
         if method==self.MOMENT_UPDATING:
-            self.moment_updating(state, action, reward, next_state)
+            self.moment_updating(state, action, reward, next_state, done)
         else :
-            self.mixture_updating(state, action, reward, next_state)
+            self.mixture_updating(state, action, reward, next_state, done)
             
-    def moment_updating(self, state, action, reward, next_state):
+    def moment_updating(self, state, action, reward, next_state, done):
         NG=self.NG
         mean=NG[state][action][0]
         lamb=NG[state][action][1]
         alpha=NG[state][action][2]
         beta=NG[state][action][3]
-        #find best action at next state
-        means=NG[next_state, :, 0]
-        next_action=np.argmax(means)
-        mean_next=NG[state][next_action][0]
-        lamb_next=NG[state][next_action][1]
-        alpha_next=NG[state][next_action][2]
-        beta_next=NG[state][next_action][3]
-        #calculate the first two moments of the cumulative reward of the next state
-        M1=reward+self.discount_factor*mean_next
-        M2=reward**2+2*self.discount_factor*reward*mean_next+self.discount_factor**2*(((lamb_next+1)*beta_next)/(lamb_next*(alpha_next-1))+mean_next**2)
-        #update the distribution (n=1??)
-        NG[state][action][0]=(lamb*mean+M1)/(lamb)
-        NG[state][action][1]=lamb+1
-        NG[state][action][2]=alpha+0.5
-        NG[state][action][3]=beta+0.5*(M2-M1**2)+(lamb*(M1-mean)**2)/(2*(lamb+1))
-    
-    def mixture_updating(self, state, action, reward, next_state):
+
+        if not done:
+
+            #find best action at next state
+            means=NG[next_state, :, 0]
+            next_action=argmaxrand(means)
+
+            mean_next=NG[next_state][next_action][0]
+            lamb_next=NG[next_state][next_action][1]
+            alpha_next=NG[next_state][next_action][2]
+            beta_next=NG[next_state][next_action][3]
+
+            #calculate the first two moments of the cumulative reward of the next state
+            M1=reward+self.discount_factor*mean_next
+            M2=reward**2+2*self.discount_factor*reward*mean_next+self.discount_factor**2*(((lamb_next+1)*beta_next)/(lamb_next*(alpha_next-1))+mean_next**2)
+
+            #update the distribution (n=1)
+            NG[state][action][0]=(lamb*mean+M1)/(lamb+1)
+            NG[state][action][1]=lamb+1
+            NG[state][action][2]=alpha+0.5
+            NG[state][action][3]=beta+0.5*(M2-M1**2)+(lamb*(M1-mean)**2)/(2*(lamb+1))
+
+        else:
+            # update the distribution (n=1)
+            NG[state][action][0] = (lamb * mean + reward) / (lamb + 1)
+            NG[state][action][1] = lamb + 1
+            NG[state][action][2] = alpha + 0.5
+            NG[state][action][3] = beta + (lamb * (reward - mean) ** 2) / (2 * (lamb + 1))
+
+
+    def mixture_updating(self, state, action, reward, next_state, done):
         NG=self.NG
         mean=NG[state][action][0]
         lamb=NG[state][action][1]
         alpha=NG[state][action][2]
         beta=NG[state][action][3]
-        #find best action at next state
-        means=NG[next_state, :, 0]
-        next_action=np.argmax(means)
-        mean_next=NG[state][next_action][0]
-        lamb_next=NG[state][next_action][1]
-        alpha_next=NG[state][next_action][2]
-        beta_next=NG[state][next_action][3]
-        ETau, err=integrate.quad(self.getExpectedTau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
-        EMuTau, err=integrate.quad(self.getExpectedMuTau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
-        EMu2Tau, err=integrate.quad(self.getExpectedMu2Tau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
-        ELogTau, err=integrate.quad(self.getExpectedLogTau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
-        NG[state][action][0]=EMuTau/ETau
-        NG[state][action][1]=1/(EMu2Tau-ETau*mean**2)
-        NG[state][action][2]=max(1.01, self.f(math.log(ETau)-ELogTau, num_iterations=20))
-        NG[state][action][3]=float(alpha/ETau)
-    
+
+        if not done:
+            #find best action at next state
+            means=NG[next_state, :, 0]
+            next_action=argmaxrand(means)
+            mean_next=NG[state][next_action][0]
+            lamb_next=NG[state][next_action][1]
+            alpha_next=NG[state][next_action][2]
+            beta_next=NG[state][next_action][3]
+
+            predictive_postetior_tointegrate = self.get_predictive_posterior_tointegrate(reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next)
+            ETaufun = lambda mu, tau, x: tau * predictive_postetior_tointegrate(mu, tau, x)
+            EMuTaufun = lambda mu, tau, x: mu * tau * predictive_postetior_tointegrate(mu, tau, x)
+            EMu2Taufun = lambda mu, tau, x: mu ** 2 * tau * predictive_postetior_tointegrate(mu, tau, x)
+            ELogTaufun = lambda mu, tau, x: np.log(tau) * predictive_postetior_tointegrate(mu, tau, x)
+
+            #We have to integrate over mu, tau and x. mu \in [-inf, inf], tau \in [0, \inf], x in [-inf, inf], so it is a triple integral
+            ETau = integrate.tplquad(ETaufun, -np.inf, np.inf, lambda a: 0., lambda a: np.inf, lambda a,b: -np.inf, lambda a,b: np.inf)
+            EMuTau = integrate.tplquad(EMuTaufun, -np.inf, np.inf, lambda a: 0., lambda a: np.inf, lambda a,b: -np.inf,lambda a,b: np.inf)
+            EMu2Tau = integrate.tplquad(EMu2Taufun, -np.inf, np.inf, lambda a: 0., lambda a: np.inf, lambda a,b: -np.inf,lambda a,b: np.inf)
+            ELogTau = integrate.tplquad(ELogTaufun, -np.inf, np.inf, lambda a: 0., lambda a: np.inf, lambda a,b: -np.inf,lambda a,b: np.inf)
+
+            '''
+            ETau, err=integrate.quad(self.getExpectedTau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
+            EMuTau, err=integrate.quad(self.getExpectedMuTau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
+            EMu2Tau, err=integrate.quad(self.getExpectedMu2Tau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
+            ELogTau, err=integrate.quad(self.getExpectedLogTau,-np.inf, np.inf, (reward,mean, lamb, alpha, beta, mean_next, lamb_next, alpha_next, beta_next))
+            '''
+
+            NG[state][action][0]=EMuTau/ETau
+            NG[state][action][1]=1/(EMu2Tau-ETau*NG[state][action][0]**2)
+            NG[state][action][2]=max(1.01, self.f(math.log(ETau)-ELogTau, num_iterations=20))
+            NG[state][action][3]=float(NG[state][action][2]/ETau)
+
+        else: #if done you don't need to propagate back anything so it is equivalent to moment update
+            self.moment_updating(state, action, reward, next_state, done)
+
+    def get_predictive_posterior_tointegrate(self, r, mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
+
+        def predictive_postetior_tointegrate(mu, tau, x):
+            M1 = r + self.discount_factor * x
+            M2 = r ** 2 + 2 * self.discount_factor * r * x + self.discount_factor ** 2 * x ** 2
+            new_mean = (lamb * mean + M1) / (lamb + 1)
+            new_lambda = lamb + 1
+            new_alpha = alpha + 0.5
+            new_beta = beta + 0.5 * (M2 - M1 ** 2) + (lamb * (M1 - mean) ** 2) / (2 * (lamb + 1))
+
+            return normal_gamma_pdf(mu, tau, new_mean, new_lambda, new_alpha, new_beta) * \
+                t.pdf(x, 2 * alpha2, loc=mean2, scale=np.sqrt(beta2/alpha2 * (1 + 1./lamb2)))
+
+        return predictive_postetior_tointegrate
+
+    '''
     def getExpectedTau(self, Rt, r, mean, lamb, alpha, beta, mean2, lamb2, alpha2, beta2):
         M1=r+self.discount_factor*Rt
         M2=r**2+2*self.discount_factor*r*Rt+self.discount_factor**2*Rt**2
@@ -129,7 +192,7 @@ class BQLearning(object):
         ELogTau=special.digamma(alpha)+np.log(beta)
         PRt=norm(mean2,1/(math.sqrt(alpha2/beta2))).pdf(Rt)
         return ELogTau*PRt
-    
+    '''
     def f(self, X, num_iterations):
         #initialize Y
         if X>=1.79:
@@ -152,7 +215,7 @@ class BQLearning(object):
         elif method==self.MYOPIC_VPI:
             return self.Myopic_VPI_action_selection(self.NG, state)
         else :
-            print("Random Action");
+            print("Random Action")
             return random.randint(0, self.NUM_ACTIONS-1)
     
     def Q_sampling_action_selection(self, NG, state):
@@ -163,26 +226,31 @@ class BQLearning(object):
             lamb=NG[state][i][1]
             alpha=NG[state][i][2]
             beta=NG[state][i][3]
-            samples[i]=self.sample_NG(mean,lamb,alpha,beta)[0]
-        return np.argmax((samples)) 
+
+            #It is better to sample from the T-student because in this way we don't need to sample first \tau and then
+            #\mu, this reduces the variance.
+            #samples[i]=self.sample_NG(mean,lamb,alpha,beta)[0]
+
+            samples[i] = np.random.standard_t(2*alpha) * np.sqrt(beta / (alpha * lamb)) + mean
+        return argmaxrand(samples)
     
     def Myopic_VPI_action_selection(self, NG, state):
         #get best and second best action
         means=NG[state, :, 0]
         ranking=np.zeros(self.NUM_ACTIONS)
         best_action, second_best=self.get_2_best_actions(means)
+        mean2 = NG[state][second_best][0]
         for i in range(self.NUM_ACTIONS):
             mean=NG[state][i][0]
             lamb=NG[state][i][1]
             alpha=NG[state][i][2]
             beta=NG[state][i][3]
-            mean2=NG[state][second_best][0]
             c=self.get_c_value(mean, lamb, alpha, beta)
             if i==best_action:
                 ranking[i]= c +(mean2-mean)*getCumulativeDistribution(mean, lamb, alpha, beta, mean2)+mean
             else :
                 ranking[i]= c +(mean-means[best_action])*(1-getCumulativeDistribution(mean, lamb, alpha, beta,means[best_action]))+mean
-        return np.argmax(ranking)
+        return argmaxrand(ranking)
 
     def sample_NG(self, mean, lamb, alpha,beta):
         ##Sample x from a normal distribution with mean μ and variance 1 / ( λ τ ) 
@@ -208,20 +276,41 @@ class BQLearning(object):
             elif A[i]>=A[max2]:
                 max2=i
         return max1, max2
+
+    '''
+        #It's ok your implementation, I suggest the following that should be faster
+        best_two_indeces = np.argpartition(-A, 2)
+        if A[best_two_indeces[0]] > A[best_two_indeces[1]]:
+            best_action = best_two_indeces[0]
+            second_best_action = best_two_indeces[1]
+        else:
+            best_action = best_two_indeces[1]
+            second_best_action = best_two_indeces[0]
+        return best_action, second_best_action
+    '''
         
     def get_v_function(self):
+        return np.max(self.NG[:, :, 0], axis=1)
+        '''
         v=np.zeros(self.NUM_STATES)
         for i in range(self.NUM_STATES):
             means=self.NG[i, :, 0]
             v[i]=np.max(means)
         return v
+        '''
+
+    def get_q_function(self):
+        return self.NG[:, :, 0]
 
     def get_best_actions(self):
+        return np.argmax(self.NG[:, :, 0], axis=1)
+        '''
         a=np.zeros(self.NUM_STATES)
         for i in range(self.NUM_STATES):
             means=self.NG[i, :, 0]
             a[i]=np.argmax(means)
         return a
+        '''
         
 def simulate(env_name, num_episodes, len_episode):
     # Initialize the  environment
@@ -259,7 +348,7 @@ def simulate(env_name, num_episodes, len_episode):
             # Observe the result
             state = obv
             # Update the Q based on the result
-            agent.update(state_0, action, reward, state, update_method)
+            agent.update(state_0, action, reward, state, done, update_method)
             # Setting up for the next iteration
             state_0 = state
             if done:
@@ -274,7 +363,9 @@ def simulate(env_name, num_episodes, len_episode):
     print("Avg Score score is %f Standard Deviation is %f" % (np.mean(scores), np.std(scores)))
     print_V_function(agent.get_v_function(), agent.NUM_STATES, env_name)
     print_best_actions(agent.get_best_actions(), agent.NUM_STATES,env_name)
+    print(agent.get_q_function())
     plt.plot(range(MAX_T), rewardsToGo)
+
     plt.show()
 def getCumulativeDistribution(mean, lamb, alpha, beta, x):
     rv=t(2*alpha)
