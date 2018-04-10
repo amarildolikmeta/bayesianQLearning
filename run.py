@@ -6,8 +6,9 @@ import sys
 from GBQL import GBQLearning
 from BQL import BQLearning
 from QL import QLearning
+from PVF import  PVFLearning
 #dictionary of algorithms
-algs={"GBQL":GBQLearning, "BQL":BQLearning, "QL":QLearning}
+algs={"GBQL":GBQLearning, "BQL":BQLearning, "QL":QLearning,"PVF":PVFLearning }
 discount_factor=0.99
 
 def simulate(env_name, num_episodes, len_episode, algorithm, reverse=True):
@@ -15,7 +16,10 @@ def simulate(env_name, num_episodes, len_episode, algorithm, reverse=True):
     env = gym.make(env_name)
     NUM_STATES=env.observation_space.n
     NUM_ACTIONS=env.action_space.n
-    agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS))
+    if algorithm in ["PVF"]:
+        agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS), VMax=1)
+    else:
+        agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS))
     NUM_EPISODES=num_episodes
     MAX_T=len_episode
     scores=np.zeros(NUM_EPISODES)
@@ -50,7 +54,7 @@ def simulate(env_name, num_episodes, len_episode, algorithm, reverse=True):
             # Observe the result
             state = obv
             # Update the Q based on the result
-            agent.update(state_0, action, reward, state)
+            agent.update(state_0, action, reward, state, done)
             # Setting up for the next iteration
             state_0 = state
             if done:
@@ -70,7 +74,7 @@ def simulate(env_name, num_episodes, len_episode, algorithm, reverse=True):
     print_best_actions(agent.get_best_actions(), agent.NUM_STATES,env_name)
     plt.plot(range(MAX_T), rewardsToGo)
     plt.show()
-    print(agent.get_NG())
+    
 def print_V_function(V, num_states, name):
     if name=="NChain-v0":
         print(V)

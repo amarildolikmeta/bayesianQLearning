@@ -21,7 +21,7 @@ class QLearning(object):
         self.discount_factor=gamma
         self.Q = np.zeros(shape=sh)
         
-    def update(self, state, action, reward, next_state):
+    def update(self, state, action, reward, next_state, done=False):
         best_q = np.amax(self.Q[next_state])
         self.Q[state , action] += self.learning_rate*(reward + self.discount_factor*(best_q) - self.Q[state , action])
         return 0

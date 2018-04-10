@@ -44,11 +44,11 @@ class BQLearning(object):
         self.NG = np.zeros(shape=sh,  dtype=(float,4))
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
-                self.NG[state][action][1]=1.#3.
+                self.NG[state][action][1]=3.#3.
                 self.NG[state][action][2]=1.1#1.5  #alpha>1 ensures the normal-gamma dist is well defined
-                self.NG[state][action][3]=100.#0.75 #high beta to increase the variance of the prior distribution to explore more
+                self.NG[state][action][3]=0.75#0.75 #high beta to increase the variance of the prior distribution to explore more
         
-    def update(self, state, action, reward, next_state, done, method=0):
+    def update(self, state, action, reward, next_state, done, method=1):
         if method==self.MOMENT_UPDATING:
             self.moment_updating(state, action, reward, next_state, done)
         else :
@@ -265,52 +265,24 @@ class BQLearning(object):
         return c
     
     def get_2_best_actions(self, A):
-        max1=np.argmax(A[0:2])
-        max2=np.argmin(A[0:2])
-        if max2==max1 :
-            max2=(1-max1)%2
-        for i in range(2, len(A)):
-            if A[i]>=A[max1]:
-                max2=max1
-                max1=i
-            elif A[i]>=A[max2]:
-                max2=i
-        return max1, max2
-
-    '''
-        #It's ok your implementation, I suggest the following that should be faster
-        best_two_indeces = np.argpartition(-A, 2)
-        if A[best_two_indeces[0]] > A[best_two_indeces[1]]:
+       best_two_indeces = np.argpartition(-A, 2)
+       if A[best_two_indeces[0]] > A[best_two_indeces[1]]:
             best_action = best_two_indeces[0]
             second_best_action = best_two_indeces[1]
-        else:
+       else:
             best_action = best_two_indeces[1]
             second_best_action = best_two_indeces[0]
-        return best_action, second_best_action
-    '''
+       return best_action, second_best_action
+
         
     def get_v_function(self):
         return np.max(self.NG[:, :, 0], axis=1)
-        '''
-        v=np.zeros(self.NUM_STATES)
-        for i in range(self.NUM_STATES):
-            means=self.NG[i, :, 0]
-            v[i]=np.max(means)
-        return v
-        '''
 
     def get_q_function(self):
         return self.NG[:, :, 0]
 
     def get_best_actions(self):
         return np.argmax(self.NG[:, :, 0], axis=1)
-        '''
-        a=np.zeros(self.NUM_STATES)
-        for i in range(self.NUM_STATES):
-            means=self.NG[i, :, 0]
-            a[i]=np.argmax(means)
-        return a
-        '''
         
 def simulate(env_name, num_episodes, len_episode):
     # Initialize the  environment

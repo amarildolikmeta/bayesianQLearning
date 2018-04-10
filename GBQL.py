@@ -35,7 +35,7 @@ class GBQLearning(object):
                 self.NG[state][action][1]=tau2
                 self.NG[state][action][0]=0
         
-    def update(self, state, action, reward, next_state):
+    def update(self, state, action, reward, next_state, done=False):
         #update visit counter and time step counter
         self.NG[state][action][2]=self.NG[state][action][2]+1
         self.t=self.t+1
