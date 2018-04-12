@@ -17,7 +17,9 @@ def simulate(env_name, num_episodes, len_episode, algorithm, reverse=True):
     NUM_STATES=env.observation_space.n
     NUM_ACTIONS=env.action_space.n
     if algorithm in ["PVF"]:
-        agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS), VMax=1)
+        VMap={"NChain-v0":500, "FrozenLake-v0":1}
+        vMax=VMap[env_name]
+        agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax)
     else:
         agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS))
     NUM_EPISODES=num_episodes

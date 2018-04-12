@@ -17,7 +17,7 @@ class PVFLearning(object):
     MAXIMUM_UPDATE=1
     VPI_SELECTION=1
     
-    def __init__(self, sh, gamma=0.99, N=N, learning_rate_scheduler=None, selection_method=1, update_method=1, VMax=Vmax,):
+    def __init__(self, sh, gamma=0.99, N=N, learning_rate_scheduler=None, selection_method=1, update_method=1, VMax=Vmax):
         
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
@@ -54,6 +54,7 @@ class PVFLearning(object):
         best_action=self.getMax(means)
         alpha = self.learning_rate_scheduler.get_learning_rate(state, action)
         sum=0
+        particles=np.zeros(self.N)
         for i in range(self.N):
             old_sample=self.sampleParticle(state, action)
             if not done:
@@ -62,7 +63,8 @@ class PVFLearning(object):
                 new_sample=0
             new_p=(1-alpha)*old_sample+alpha*(reward+self.discount_factor*new_sample)
             sum=sum+new_p
-            self.NG[state, action, i, 0]=new_p
+            particles[i]=new_p
+        self.NG[state, action, :, 0]=particles
         self.returns[state, action]=sum/self.N
             
     def MAXIMUM_UPDATE(self, state, action, reward, next_state, done):
@@ -83,11 +85,13 @@ class PVFLearning(object):
                         prod=prod*w
                     sum=sum+x_i_k*w_i_k*prod
                 target=target+sum
+            particles=np.zeros(self.N)
             for i in range(self.N):
                 old_sample=self.sampleParticle(state, action)
                 new_p=(1-alpha)*old_sample+alpha*(reward+self.discount_factor*target)
                 sum=sum+new_p
-                self.NG[state, action, i, 0]=new_p
+                particles[i]=new_p
+            self.NG[state, action, :, 0]=particles
             self.returns[state, action]=sum/self.N
         else:
             self.Q_VALUE_SAMPLING_UPDATE(state, action, reward, next_state, done)
@@ -332,12 +336,12 @@ if __name__ == "__main__":
         print("Executing 100 step episodes")
         len_episode=100
     print("Testing on environment "+env_name)
-    delta=2
-    n=8
+    delta=5
+    n=10
     X=[]
     Y=[]
-    for i in range(5):
-        n=n*delta
+    for i in range(20):
+        n=n+delta
         score=simulate(env_name, num_episodes, len_episode, n)
         X.append(n)
         Y.append(score)
