@@ -15,9 +15,10 @@ class PVFLearning(object):
     
     Q_VALUE_SAMPLING=0
     MAXIMUM_UPDATE=1
+    WEIGHTED_MAXIMUM_UPDATE=2
     VPI_SELECTION=1
     
-    def __init__(self, sh, gamma=0.99, N=N, learning_rate_scheduler=None, selection_method=1, update_method=1, VMax=Vmax):
+    def __init__(self, sh, gamma=0.99, N=N, learning_rate_scheduler=None, selection_method=1, update_method=2, VMax=Vmax):
         
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
@@ -42,11 +43,14 @@ class PVFLearning(object):
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
                 self.returns[state, action]=np.mean(self.NG[state, action, :, 0])
+                
     def update(self, state, action, reward, next_state, done=False,):
         if self.update_method==PVFLearning.Q_VALUE_SAMPLING:
             self.Q_VALUE_SAMPLING_UPDATE(state, action, reward, next_state, done)
-        else:
+        elif self.update_method==PVFLearning.MAXIMUM_UPDATE:
             self.MAXIMUM_UPDATE(state, action, reward, next_state, done)
+        else:
+            self.WEIGHTED_MAXIMUM_UPDATE(state, action, reward, next_state, done)
            
             
     def Q_VALUE_SAMPLING_UPDATE(self, state, action, reward, next_state, done):
@@ -85,6 +89,36 @@ class PVFLearning(object):
                         prod=prod*w
                     sum=sum+x_i_k*w_i_k*prod
                 target=target+sum
+            particles=np.zeros(self.N)
+            for i in range(self.N):
+                old_sample=self.sampleParticle(state, action)
+                new_p=(1-alpha)*old_sample+alpha*(reward+self.discount_factor*target)
+                sum=sum+new_p
+                particles[i]=new_p
+            self.NG[state, action, :, 0]=particles
+            self.returns[state, action]=sum/self.N
+        else:
+            self.Q_VALUE_SAMPLING_UPDATE(state, action, reward, next_state, done)
+            
+    def WEIGHTED_MAXIMUM_UPDATE(self, state, action, reward, next_state, done):
+        if not done:
+            target=0
+            alpha = self.learning_rate_scheduler.get_learning_rate(state, action)
+            for i in range(self.NUM_ACTIONS):
+                sum=0
+                mu_i=self.returns[next_state, i]
+                for k in range(self.N):
+                    x_i_k=self.NG[next_state, i, k, 0]
+                    w_i_k=self.NG[next_state, i, k, 1]
+                    prod=1
+                    for j in range(self.NUM_ACTIONS):
+                        w=0
+                        for l in range(self.N):
+                            if self.NG[next_state, j, l, 0]<=x_i_k:
+                                w=w+self.NG[next_state, j, l, 1]
+                        prod=prod*w
+                    sum=sum+w_i_k*prod
+                target=target+mu_i*sum
             particles=np.zeros(self.N)
             for i in range(self.N):
                 old_sample=self.sampleParticle(state, action)
@@ -163,7 +197,7 @@ class PVFLearning(object):
         if method in [PVFLearning.Q_VALUE_SAMPLING,PVFLearning.VPI_SELECTION]:
             self.selection_method=method
     def set_update_method(self,  method=1):
-        if method in [self.MOMENT_UPDATING,self.MIXTURE_UPDATING]:
+        if method in [PVFLearning.Q_VALUE_SAMPLING,PVFLearning.MAXIMUM_UPDATE, PVFLearning.WEIGHTED_MAXIMUM_UPDATE]:
             self.update_method=method
     
     def UCB_selection(self, NG, state):

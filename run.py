@@ -9,9 +9,11 @@ from QL import QLearning
 from PVF import  PVFLearning
 #dictionary of algorithms
 algs={"GBQL":GBQLearning, "BQL":BQLearning, "QL":QLearning,"PVF":PVFLearning }
+update_methods={"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING, "MAXIMUM_UPDATE":PVFLearning.MAXIMUM_UPDATE, "WEIGHTED_MAXIMUM_UPDATE":PVFLearning.WEIGHTED_MAXIMUM_UPDATE }
+selection_methods={"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING,"VPI_SELECTION":PVFLearning.VPI_SELECTION}
 discount_factor=0.99
 
-def simulate(env_name, num_episodes, len_episode, algorithm, reverse=True):
+def simulate(env_name,num_episodes,  len_episode, algorithm, update_method, selection_method):
     # Initialize the  environment
     env = gym.make(env_name)
     NUM_STATES=env.observation_space.n
@@ -20,6 +22,9 @@ def simulate(env_name, num_episodes, len_episode, algorithm, reverse=True):
         VMap={"NChain-v0":500, "FrozenLake-v0":1}
         vMax=VMap[env_name]
         agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax)
+        agent.set_update_method(update_methods[update_method])
+        agent.set_selection_method(selection_methods[selection_method])
+        print("Updating with:"+update_method+" ; Selecting with:"+selection_method);
     else:
         agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS))
     NUM_EPISODES=num_episodes
@@ -27,12 +32,19 @@ def simulate(env_name, num_episodes, len_episode, algorithm, reverse=True):
     scores=np.zeros(NUM_EPISODES)
     rewards=np.zeros(MAX_T)
     rewardsToGo=np.zeros(MAX_T)
+    
     print("Running %d episodes of %d steps"%(num_episodes, len_episode))
     print("Initial V:")
     print_V_function(agent.get_v_function(), agent.NUM_STATES,env_name)
     #count how many times actions execute
     counts=np.zeros(agent.NUM_ACTIONS)
     for episode in range(NUM_EPISODES):
+        if algorithm in ["PVF"]:
+            VMap={"NChain-v0":500, "FrozenLake-v0":1}
+            vMax=VMap[env_name]
+            agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax)
+        else:
+            agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS))
         # Reset the environment
         obv = env.reset()
         # the initial state
@@ -43,14 +55,9 @@ def simulate(env_name, num_episodes, len_episode, algorithm, reverse=True):
             #env.render()
             # Select an action 
             action = agent.select_action(state_0)
-            #reverse action to see if it still learns
-            if reverse:
-                exec_action=(action+1)%2
-            else:
-                exec_action=action
             counts[action]=counts[action]+1
             # Execute the action
-            obv, reward, done, _ = env.step(exec_action)
+            obv, reward, done, _ = env.step(action)
             score+=reward
             rewards[i]=reward
             # Observe the result
@@ -143,8 +150,14 @@ if __name__ == "__main__":
         print("Running BQL algorithm")
         alg="GBQL"
     if len(argv)>5:
-        reverse=True
+        if argv[5] in update_methods.keys():
+            update_method=argv[5]
     else:
-        reverse=False
+        update_method="Q_VALUE_SAMPLING";
+    if len(argv)>6:
+        if argv[6] in selection_methods.keys():
+            selection_method=argv[6]
+    else:
+        selection_method="VPI_SELECTION";
     print("Testing on environment "+env_name)
-    simulate(env_name, num_episodes, len_episode, alg, reverse)
+    simulate(env_name, num_episodes, len_episode, alg, update_method, selection_method)

@@ -9,7 +9,7 @@ import sys
 discount_factor = 0.99
 
 class GBQLearning(object):
-    def __init__(self, sh, gamma=0.99, tau=0.000001, tau2=0.000001,selection_method=1, update_method=1):
+    def __init__(self, sh, gamma=0.99, tau=0.000001, tau2=0.000001,selection_method=1, update_method=1, precision=1000):
         #ACTION SELECTION TYPE
         self.Q_VALUE_SAMPLING=0
         self.MYOPIC_VPI=1
@@ -18,7 +18,8 @@ class GBQLearning(object):
         #POSTERIOR UPDATE
         self.MOMENT_UPDATING=0
         self.MIXTURE_UPDATING=1
-
+        self.WEIGHTED_MAXIMUM_UPDATE=2
+        
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
         self.discount_factor=gamma
@@ -30,6 +31,8 @@ class GBQLearning(object):
         self.update_method=update_method
         #initialize the distributions and counters
         self.NG = np.zeros(shape=sh,  dtype=(float,3))
+        #used to approximate weighted maximum estimation
+        self._precision=precision
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
                 self.NG[state][action][1]=tau2
@@ -41,8 +44,10 @@ class GBQLearning(object):
         self.t=self.t+1
         if self.update_method==self.MOMENT_UPDATING:
             self.moment_updating(state, action, reward, next_state)
-        else :
+        elif self.update_method==self.MIXTURE_UPDATING:
             self.mixture_updating(state, action, reward, next_state)
+        else:
+            self.weighted_maximum_updating(state, action, reward, next_state)
         #self.update_tau()
             
     def moment_updating(self, state, action, reward, next_state):
@@ -74,6 +79,42 @@ class GBQLearning(object):
         NG[state][action][0]=(tauP*Rt+tau*mean*self.discount_factor**2)/(tauP+tau*(self.discount_factor**2))
         NG[state][action][1]=(tauP+(self.discount_factor**2)*tau)**2/((self.discount_factor**2)*(2*tauP+tau*(self.discount_factor**2)))
     
+    def weighted_maximum_updating(self, state, action, reward, next_state, done=False):
+        NG=self.NG
+        mean=NG[state][action][0]
+        tau=NG[state][action][1]
+        #find best action at next state
+        q_next = self._next_q(next_state) if not done else 0.
+        taus=NG[next_state, :, 1]
+        taus_p=(self.tau*taus)/(taus+self.tau)
+        tau_next=1/(np.sum(1/taus_p))
+        Rt=reward+self.discount_factor*q_next
+        NG[state][action][0]=(mean*tau+tau_next*Rt/(self.discount_factor**2))/(tau+(tau_next/(self.discount_factor**2)))
+        NG[state][action][1]=tau+(tau_next/(self.discount_factor**2))
+        
+    def _next_q(self, next_state):
+        """
+        Args:
+            next_state (np.ndarray): the state where next action has to be
+                evaluated.
+
+        Returns:
+            The weighted estimator value in ``next_state``.
+
+        """
+        means = self.NG[next_state, :,0]
+        taus = self.NG[next_state, :,1]
+        taus_p= (self.tau*taus)/(taus+self.tau)
+        sigmas=1/(np.sqrt(taus_p))
+        samples = np.random.normal(np.repeat([means], self._precision, 0),
+                                       np.repeat([sigmas], self._precision, 0))
+        max_idx = np.argmax(samples, axis=1)
+        max_idx, max_count = np.unique(max_idx, return_counts=True)
+        count = np.zeros(means.size)
+        count[max_idx] = max_count
+        self._w = count / self._precision
+        return np.dot(self._w, means)
+        
     def update_tau(self):
         self.tau=np.exp(self.t/5000000)-1
         
