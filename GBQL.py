@@ -9,16 +9,16 @@ import sys
 discount_factor = 0.99
 
 class GBQLearning(object):
-    def __init__(self, sh, gamma=0.99, tau=0.000001, tau2=0.000001,selection_method=1, update_method=1, precision=1000):
-        #ACTION SELECTION TYPE
-        self.Q_VALUE_SAMPLING=0
-        self.MYOPIC_VPI=1
-        self.UCB=2
+    #ACTION SELECTION TYPE
+    Q_VALUE_SAMPLING=0
+    MYOPIC_VPI=1
+    UCB=2
         
-        #POSTERIOR UPDATE
-        self.MOMENT_UPDATING=0
-        self.MIXTURE_UPDATING=1
-        self.WEIGHTED_MAXIMUM_UPDATE=2
+    #POSTERIOR UPDATE
+    MOMENT_UPDATING=0
+    MIXTURE_UPDATING=1
+    WEIGHTED_MAXIMUM_UPDATE=2
+    def __init__(self, sh, gamma=0.99, tau=0.000001, tau2=0.000001,selection_method=1, update_method=1, precision=1000):
         
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
@@ -42,15 +42,15 @@ class GBQLearning(object):
         #update visit counter and time step counter
         self.NG[state][action][2]=self.NG[state][action][2]+1
         self.t=self.t+1
-        if self.update_method==self.MOMENT_UPDATING:
-            self.moment_updating(state, action, reward, next_state)
-        elif self.update_method==self.MIXTURE_UPDATING:
-            self.mixture_updating(state, action, reward, next_state)
+        if self.update_method==GBQLearning.MOMENT_UPDATING:
+            self.moment_updating(state, action, reward, next_state, done)
+        elif self.update_method==GBQLearning.MIXTURE_UPDATING:
+            self.mixture_updating(state, action, reward, next_state, done)
         else:
-            self.weighted_maximum_updating(state, action, reward, next_state)
+            self.weighted_maximum_updating(state, action, reward, next_state, done)
         #self.update_tau()
             
-    def moment_updating(self, state, action, reward, next_state):
+    def moment_updating(self, state, action, reward, next_state, done=False):
         NG=self.NG
         mean=NG[state][action][0]
         tau=NG[state][action][1]
@@ -65,7 +65,7 @@ class GBQLearning(object):
         NG[state][action][0]=(mean*tau+tau_next*Rt/(self.discount_factor**2))/(tau+(tau_next/(self.discount_factor**2)))
         NG[state][action][1]=tau+(tau_next/(self.discount_factor**2))
     
-    def mixture_updating(self, state, action, reward, next_state):
+    def mixture_updating(self, state, action, reward, next_state, done=False):
         NG=self.NG
         mean=NG[state][action][0]
         tau=NG[state][action][1]
@@ -119,11 +119,11 @@ class GBQLearning(object):
         self.tau=np.exp(self.t/5000000)-1
         
     def select_action(self, state):
-        if self.selection_method==self.Q_VALUE_SAMPLING:
+        if self.selection_method==GBQLearning.Q_VALUE_SAMPLING:
             return self.Q_sampling_action_selection(self.NG, state)
-        elif self.selection_method==self.MYOPIC_VPI:
+        elif self.selection_method==GBQLearning.MYOPIC_VPI:
             return self.Myopic_VPI_action_selection(self.NG, state)
-        elif self.selection_method==self.UCB:
+        elif self.selection_method==GBQLearning.UCB:
             return self.UCB_selection(self.NG, state)
         else :
             print("Random Action");
@@ -139,10 +139,10 @@ class GBQLearning(object):
         return self.getMax(samples) 
     
     def set_selection_method(self,  method=1):
-        if method in [self.Q_VALUE_SAMPLING,self.MYOPIC_VPI, self.UCB]:
+        if method in [GBQLearning.Q_VALUE_SAMPLING,GBQLearning.MYOPIC_VPI, self.UCB]:
             self.selection_method=method
     def set_update_method(self,  method=1):
-        if method in [self.MOMENT_UPDATING,self.MIXTURE_UPDATING]:
+        if method in [GBQLearning.MOMENT_UPDATING,GBQLearning.MIXTURE_UPDATING]:
             self.update_method=method
     
     def UCB_selection(self, NG, state):

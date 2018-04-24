@@ -54,11 +54,20 @@ class PVFLearning(object):
            
             
     def Q_VALUE_SAMPLING_UPDATE(self, state, action, reward, next_state, done):
-        means=self.returns[next_state, :]
+        means=self.NG[next_state, :]
         best_action=self.getMax(means)
         alpha = self.learning_rate_scheduler.get_learning_rate(state, action)
-        sum=0
         particles=np.zeros(self.N)
+        old_particles=self.NG[state, action, :, 0]
+        old_weights=self.NG[state, action, :, 1]
+        new_particles=self.NG[next_state, best_action, :, 0]
+        new_weights=self.NG[next_state, best_action, :, 1]
+        old_samples = np.random.choice(a=old_particles,size=(N), p=old_weights)
+        new_samples = np.random.choice(a=new_particles,size=(N), p=new_weights)
+        particles=(1-alpha)*old_samples+alpha*(reward+self.discount_factor*new_samples)
+        self.NG[state, action, :, 0]=particles
+        self.returns[state, action]=np.mean(particles)
+        '''sum=0
         for i in range(self.N):
             old_sample=self.sampleParticle(state, action)
             if not done:
@@ -69,7 +78,7 @@ class PVFLearning(object):
             sum=sum+new_p
             particles[i]=new_p
         self.NG[state, action, :, 0]=particles
-        self.returns[state, action]=sum/self.N
+        self.returns[state, action]=sum/self.N'''
             
     def MAXIMUM_UPDATE(self, state, action, reward, next_state, done):
         if not done:
@@ -90,13 +99,12 @@ class PVFLearning(object):
                     sum=sum+x_i_k*w_i_k*prod
                 target=target+sum
             particles=np.zeros(self.N)
-            for i in range(self.N):
-                old_sample=self.sampleParticle(state, action)
-                new_p=(1-alpha)*old_sample+alpha*(reward+self.discount_factor*target)
-                sum=sum+new_p
-                particles[i]=new_p
+            old_particles=self.NG[state, action, :, 0]
+            old_weights=self.NG[state, action, :, 1]
+            old_samples = np.random.choice(a=old_particles,size=(N), p=old_weights)
+            particles=(1-alpha)*old_samples+alpha*(reward+self.discount_factor*target)
             self.NG[state, action, :, 0]=particles
-            self.returns[state, action]=sum/self.N
+            self.returns[state, action]=np.mean(particles)
         else:
             self.Q_VALUE_SAMPLING_UPDATE(state, action, reward, next_state, done)
             
@@ -120,13 +128,12 @@ class PVFLearning(object):
                     sum=sum+w_i_k*prod
                 target=target+mu_i*sum
             particles=np.zeros(self.N)
-            for i in range(self.N):
-                old_sample=self.sampleParticle(state, action)
-                new_p=(1-alpha)*old_sample+alpha*(reward+self.discount_factor*target)
-                sum=sum+new_p
-                particles[i]=new_p
+            old_particles=self.NG[state, action, :, 0]
+            old_weights=self.NG[state, action, :, 1]
+            old_samples = np.random.choice(a=old_particles,size=(N), p=old_weights)
+            particles=(1-alpha)*old_samples+alpha*(reward+self.discount_factor*target)
             self.NG[state, action, :, 0]=particles
-            self.returns[state, action]=sum/self.N
+            self.returns[state, action]=np.mean(particles)
         else:
             self.Q_VALUE_SAMPLING_UPDATE(state, action, reward, next_state, done)
     
