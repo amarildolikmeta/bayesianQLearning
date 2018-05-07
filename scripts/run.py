@@ -3,14 +3,18 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 import sys
+import os.path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from GBQL import GBQLearning
 from BQL import BQLearning
 from QL import QLearning
-from PVF import  PVFLearning
+from pvf2 import  PVFLearning
+from QL import  EpsilonScheduler
+
 #dictionary of algorithms
 algs={"GBQL":GBQLearning, "BQL":BQLearning, "QL":QLearning,"PVF":PVFLearning }
-update_methods={"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING, "MAXIMUM_UPDATE":PVFLearning.MAXIMUM_UPDATE, "WEIGHTED_MAXIMUM_UPDATE":PVFLearning.WEIGHTED_MAXIMUM_UPDATE }
-selection_methods={"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING,"VPI_SELECTION":PVFLearning.VPI_SELECTION}
+update_methods={"Q_VALUE_SAMPLING_SORTED":PVFLearning.Q_VALUE_SAMPLING_SORTED,"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING, "MAXIMUM_UPDATE":PVFLearning.MAXIMUM_UPDATE, "WEIGHTED_MAXIMUM_UPDATE":PVFLearning.WEIGHTED_MAXIMUM_UPDATE }
+selection_methods={"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING,"MYOPIC_VPI":PVFLearning.MYOPIC_VPI, "UCB":GBQLearning.UCB}
 discount_factor=0.99
 
 def simulate(env_name,num_episodes,  len_episode, algorithm, update_method, selection_method):
@@ -18,6 +22,8 @@ def simulate(env_name,num_episodes,  len_episode, algorithm, update_method, sele
     env = gym.make(env_name)
     NUM_STATES=env.observation_space.n
     NUM_ACTIONS=env.action_space.n
+    NUM_EPISODES=num_episodes
+    MAX_T=len_episode
     if algorithm in ["PVF"]:
         VMap={"NChain-v0":500, "FrozenLake-v0":1}
         vMax=VMap[env_name]
@@ -25,10 +31,11 @@ def simulate(env_name,num_episodes,  len_episode, algorithm, update_method, sele
         agent.set_update_method(update_methods[update_method])
         agent.set_selection_method(selection_methods[selection_method])
         print("Updating with:"+update_method+" ; Selecting with:"+selection_method);
+    elif algorithm in ["QL"]:
+        scheduler= EpsilonScheduler(0.2, 0.05,NUM_EPISODES,MAX_T)
+        agent= QLearning((NUM_STATES , NUM_ACTIONS),scheduler=scheduler)
     else:
         agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS))
-    NUM_EPISODES=num_episodes
-    MAX_T=len_episode
     scores=np.zeros(NUM_EPISODES)
     rewards=np.zeros(MAX_T)
     rewardsToGo=np.zeros(MAX_T)
@@ -43,6 +50,11 @@ def simulate(env_name,num_episodes,  len_episode, algorithm, update_method, sele
             VMap={"NChain-v0":500, "FrozenLake-v0":1}
             vMax=VMap[env_name]
             agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax)
+            agent.set_update_method(update_methods[update_method])
+            agent.set_selection_method(selection_methods[selection_method])
+        elif algorithm in ["QL"]:
+            scheduler= EpsilonScheduler(0.2, 0.05,NUM_EPISODES,MAX_T)
+            agent= QLearning((NUM_STATES , NUM_ACTIONS),scheduler=scheduler)
         else:
             agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS))
         # Reset the environment
@@ -158,6 +170,6 @@ if __name__ == "__main__":
         if argv[6] in selection_methods.keys():
             selection_method=argv[6]
     else:
-        selection_method="VPI_SELECTION";
+        selection_method="MYOPIC_VPI";
     print("Testing on environment "+env_name)
     simulate(env_name, num_episodes, len_episode, alg, update_method, selection_method)

@@ -1,4 +1,7 @@
 from gym.envs.toy_text.frozen_lake import FrozenLakeEnv
+import sys
+import os.path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from BQL import BQLearning
 from algorithms.utils.utils import *
 import numpy as np

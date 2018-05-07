@@ -4,47 +4,67 @@ import random
 import math
 import matplotlib.pyplot as plt
 import sys
+from algorithms.utils.learning_rate_scheduler import CountLearningRateScheduler
+from algorithms.utils.explorator import EpsilonGreedyExplorator
+from algorithms.utils import scheduler
 discount_factor = 0.99  # since the world is unchanging
 MIN_EXPLORE_RATE = 0.01
 MIN_LEARNING_RATE = 0.00
+class EpsilonScheduler(scheduler.Scheduler):
+
+    def __init__(self, init_value, min_value, max_iter=10, horizon=1000):
+        update_rule = lambda value, t: init_value * (1 - t / (max_iter * horizon)) ** 2
+        super(EpsilonScheduler, self).__init__(min_value, init_value, update_rule)
+
 class QLearning(object):
     """
     Q-Learning algorithm.
     """
-    def __init__(self, sh,gamma=0.99,   min_explore_rate=0.01, min_learning_rate=0.00):
-        self.MIN_EXPLORE_RATE=min_explore_rate
-        self.MIN_LEARNING_RATE = min_learning_rate
-        self.explore_rate=self.get_explore_rate(0)
-        self.learning_rate=self.get_learning_rate(0)
+    def __init__(self, sh,gamma=0.99,   learning_rate_scheduler=None, scheduler=None, max_iter=10, horizon=1000):
+        
+        
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
         self.discount_factor=gamma
         self.Q = np.zeros(shape=sh)
-        
+        if learning_rate_scheduler is None:
+            self.learning_rate_scheduler=CountLearningRateScheduler(self.NUM_STATES, self.NUM_ACTIONS)
+        else:
+            self.learning_rate_scheduler=learning_rate_scheduler
+        if scheduler is None:
+            self.epsilon_scheduler=EpsilonScheduler(self.NUM_STATES, self.NUM_ACTIONS, max_iter, horizon)
+        else:
+            self.epsilon_scheduler=scheduler    
+    
     def update(self, state, action, reward, next_state, done=False):
-        best_q = np.amax(self.Q[next_state])
-        self.Q[state , action] += self.learning_rate*(reward + self.discount_factor*(best_q) - self.Q[state , action])
+        gamma=self.discount_factor
+        alpha = self.learning_rate_scheduler.get_learning_rate(state, action)
+        best_q = self.getMax(self.Q[next_state])
+        self.Q[state , action] += alpha*(reward + gamma*(best_q) - self.Q[state , action])
         return 0
+    
+    
+    def getMax(self, V):
+        #brake ties
+        maximums=np.where(V==np.max(V))[0]
+        return np.random.choice(maximums)
         
     def select_action(self, state):
         # Select a random action
-        if random.random() < self.explore_rate:
+        epsilon=self.epsilon_scheduler.update()
+        if random.random() < epsilon:
             return random.randint(0, self.NUM_ACTIONS-1)
         # Select the action with the highest q
         else:
-            action = np.argmax(self.Q[state])
+            action = self.getMax(self.Q[state])
         return action
     
-    def update_learning_rate(self, t):
-        self.learning_rate=self.get_learning_rate(t)
+    def get_epsilon(self):
+        return self.epsilon_scheduler.update()
         
-    def update_explore_rate(self, t):
-        self.explore_rate=self.get_explore_rate(t)
-    def get_explore_rate(self, t):
-        return max(self.MIN_EXPLORE_RATE, min(1, 1.0 - math.log10((t+1)/25)))
-    
-    def get_learning_rate(self, t):
-        return max(self.MIN_LEARNING_RATE, min(0.5, 1.0 - math.log10((t+1)/25)))    
+    def get_alpha(self):
+        return self.learning_rate_scheduler.get_learning_rate(0, 0)
+        
     def get_v_function(self):
         v=np.zeros(self.NUM_STATES)
         for i in range(self.NUM_STATES):
@@ -63,9 +83,10 @@ def simulate(env_name, num_episodes, len_episode):
     env = gym.make(env_name)
     NUM_STATES=env.observation_space.n
     NUM_ACTIONS=env.action_space.n
-    agent= QLearning((NUM_STATES , NUM_ACTIONS),MIN_EXPLORE_RATE, MIN_LEARNING_RATE)
     NUM_EPISODES=num_episodes
     MAX_T=len_episode
+    scheduler= EpsilonScheduler(0.3, 0.00,NUM_EPISODES,MAX_T)
+    agent= QLearning((NUM_STATES , NUM_ACTIONS),scheduler=scheduler)
     i=0
     scores=np.zeros(NUM_EPISODES)
     rewards=np.zeros(MAX_T)
@@ -74,6 +95,9 @@ def simulate(env_name, num_episodes, len_episode):
     print("Initial V:")
     print_V_function(agent.get_v_function(), agent.NUM_STATES,env_name)
     for episode in range(NUM_EPISODES):
+        scheduler= EpsilonScheduler(0.3, 0.00,NUM_EPISODES,MAX_T)
+        agent= QLearning((NUM_STATES , NUM_ACTIONS),scheduler=scheduler)
+        print("Episode %d : epsilon_start %f; alpha_start:%f" %(episode, agent.get_epsilon(), agent.get_alpha()))
         # Reset the environment
         obv = env.reset()
         # the initial state
@@ -98,12 +122,11 @@ def simulate(env_name, num_episodes, len_episode):
             if done:
                #print("Episode %d finished after %f time steps, score=%d" % (episode, t, score))
                break
-            agent.update_explore_rate(i)
-            agent.update_learning_rate(i)
         for i in range(MAX_T):
             for j in range(i, MAX_T):
                 rewardsToGo[i]+=rewards[j]*discount_factor**(j-i)
         scores[episode]=score
+        print("Episode %d : epsilon_end %f; alpha_end %f" %(episode, agent.get_epsilon(), agent.get_alpha()))
         # Update parameters
         
     for i in range(MAX_T):
@@ -156,21 +179,21 @@ if __name__ == "__main__":
     argv=sys.argv
     if len(argv)<2:
         print("usage QL.py <env_name> <num_episodes> <len_episode>")
-        env_name="FrozenLake-v0"
+        env_name="NChain-v0"
     elif argv[1] in ["NChain-v0", "FrozenLake-v0"]:
         env_name=argv[1]
     else:
-        env_name="FrozenLake-v0"
+        env_name="NChain-v0"
     if len(argv)>2:
         num_episodes=int(argv[2])
     else:
-        print("Executing 1000 episodes")
-        num_episodes=1000
+        print("Executing 10episodes")
+        num_episodes=10
     if len(argv)>3:
         len_episode=int(argv[3])
     else:
-        print("Executing 100 step episodes")
-        len_episode=100
+        print("Executing 1000 step episodes")
+        len_episode=1000
     print("Testing on environment "+env_name)
     simulate(env_name, num_episodes, len_episode)
    

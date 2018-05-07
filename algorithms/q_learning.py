@@ -16,7 +16,7 @@ class QLearner(object):
         self.discount_factor = discount_factor
 
         if learning_rate_scheduler is None:
-            self.learning_rate_scheduler = ConstantLearningRateScheduler()
+            self.learning_rate_scheduler = ConstantLearningRateScheduler(CountLearningRateScheduler)
         else:
             self.learning_rate_scheduler = learning_rate_scheduler
 

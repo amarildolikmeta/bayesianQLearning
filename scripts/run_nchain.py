@@ -1,3 +1,6 @@
+import sys
+import os.path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from envs.nchain_discrete import NChainEnv
 from algorithms.value_iteration import ValueIteration
 from algorithms.q_learning import QLearner

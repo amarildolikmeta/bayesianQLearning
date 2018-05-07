@@ -31,14 +31,15 @@ class BQLearning(object):
 
     # POSTERIOR UPDATE
     MOMENT_UPDATING = 0
-    MIXTURE_UPDATING = 1
-
-    def __init__(self, sh, gamma=0.99):
+    MIXTURE_UPDATING = 1    
+    def __init__(self, sh, gamma=0.99, update_method=0, selection_method=1):
 
 
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
         self.discount_factor=gamma
+        self.update_method=update_method
+        self.selection_method=selection_method
         
         #initialize the distributions
         self.NG = np.zeros(shape=sh,  dtype=(float,4))
@@ -48,8 +49,8 @@ class BQLearning(object):
                 self.NG[state][action][2]=1.1#1.5  #alpha>1 ensures the normal-gamma dist is well defined
                 self.NG[state][action][3]=0.75#0.75 #high beta to increase the variance of the prior distribution to explore more
         
-    def update(self, state, action, reward, next_state, done, method=1):
-        if method==self.MOMENT_UPDATING:
+    def update(self, state, action, reward, next_state, done):
+        if self.update_method==BQLearning.MOMENT_UPDATING:
             self.moment_updating(state, action, reward, next_state, done)
         else :
             self.mixture_updating(state, action, reward, next_state, done)
@@ -209,10 +210,10 @@ class BQLearning(object):
     def derG(self, X):
         return 1/X-special.polygamma(1, X)
         
-    def select_action(self, state, method=1):
-        if method==self.Q_VALUE_SAMPLING:
+    def select_action(self, state):
+        if self.selection_method==BQLearning.Q_VALUE_SAMPLING:
             return self.Q_sampling_action_selection(self.NG, state)
-        elif method==self.MYOPIC_VPI:
+        elif self.selection_method==BQLearning.MYOPIC_VPI:
             return self.Myopic_VPI_action_selection(self.NG, state)
         else :
             print("Random Action")
@@ -258,14 +259,25 @@ class BQLearning(object):
         tau=np.random.gamma(alpha, beta)
         R=np.random.normal(mean, 1.0/(lamb*tau))
         return R, tau
-    
+        
+    def set_selection_method(self,  method=1):
+        if method in [BQLearning.Q_VALUE_SAMPLING,BQLearning.MYOPIC_VPI]:
+            self.selection_method=method
+        else:
+            raise Exception('Selection Method not Valid')
+    def set_update_method(self,  method=1):
+        if method in [BQLearning.MOMENT_UPDATING,BQLearning.MIXTURE_UPDATING ]:
+            self.update_method=method
+        else:
+            raise Exception('Update Method not Valid')
+            
     def get_c_value(self, mean, lamb, alpha, beta):
         c=math.sqrt(beta)/((alpha-0.5)*math.sqrt(2*lamb)*special.beta(alpha, 0.5))
         c=c*math.pow(1+(mean**2/(2*alpha)), 0.5-alpha)
         return c
     
     def get_2_best_actions(self, A):
-       best_two_indeces = np.argpartition(-A, 2)
+       best_two_indeces = np.argpartition(A, -2)
        if A[best_two_indeces[0]] > A[best_two_indeces[1]]:
             best_action = best_two_indeces[0]
             second_best_action = best_two_indeces[1]

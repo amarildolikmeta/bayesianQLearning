@@ -141,10 +141,14 @@ class GBQLearning(object):
     def set_selection_method(self,  method=1):
         if method in [GBQLearning.Q_VALUE_SAMPLING,GBQLearning.MYOPIC_VPI, self.UCB]:
             self.selection_method=method
+        else:
+            raise Exception('Selection Method not Valid')
     def set_update_method(self,  method=1):
-        if method in [GBQLearning.MOMENT_UPDATING,GBQLearning.MIXTURE_UPDATING]:
+        if method in [GBQLearning.MOMENT_UPDATING,GBQLearning.MIXTURE_UPDATING,GBQLearning.WEIGHTED_MAXIMUM_UPDATE ]:
             self.update_method=method
-    
+        else:
+            raise Exception('Update Method not Valid')
+            
     def UCB_selection(self, NG, state):
         #Sample one value for each action
         samples=np.zeros(self.NUM_ACTIONS)
