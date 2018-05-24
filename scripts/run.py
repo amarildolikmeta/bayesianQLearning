@@ -8,12 +8,12 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from GBQL import GBQLearning
 from BQL import BQLearning
 from QL import QLearning
-from pvf2 import  PVFLearning
+from PVF import  PVFLearning
 from QL import  EpsilonScheduler
 
 #dictionary of algorithms
 algs={"GBQL":GBQLearning, "BQL":BQLearning, "QL":QLearning,"PVF":PVFLearning }
-update_methods={"Q_VALUE_SAMPLING_SORTED":PVFLearning.Q_VALUE_SAMPLING_SORTED,"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING, "MAXIMUM_UPDATE":PVFLearning.MAXIMUM_UPDATE, "WEIGHTED_MAXIMUM_UPDATE":PVFLearning.WEIGHTED_MAXIMUM_UPDATE }
+update_methods={"PARTICLE_CLASSIC":PVFLearning.PARTICLE_CLASSIC,"Q_VALUE_SAMPLING_SORTED":PVFLearning.Q_VALUE_SAMPLING_SORTED,"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING, "MAXIMUM_UPDATE":PVFLearning.MAXIMUM_UPDATE, "WEIGHTED_MAXIMUM_UPDATE":PVFLearning.WEIGHTED_MAXIMUM_UPDATE }
 selection_methods={"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING,"MYOPIC_VPI":PVFLearning.MYOPIC_VPI, "UCB":GBQLearning.UCB}
 discount_factor=0.99
 

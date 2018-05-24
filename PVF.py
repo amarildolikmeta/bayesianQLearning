@@ -17,19 +17,24 @@ class PVFLearning(object):
     MAXIMUM_UPDATE=1
     WEIGHTED_MAXIMUM_UPDATE=2
     Q_VALUE_SAMPLING_SORTED=3
+    PARTICLE_CLASSIC=4
     MYOPIC_VPI=1
     
-    def __init__(self, sh, gamma=0.99, N=N, learning_rate_scheduler=None, selection_method=1, update_method=2, VMax=Vmax):
+    def __init__(self, sh, gamma=0.99, N=N, learning_rate_scheduler=None, selection_method=1, update_method=2, VMax=Vmax, q=None, h=25):
         
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
         self.discount_factor=gamma
         self.delta=0.05
         self.N=N
+        self.Nth=0.5*N
         self.t=0
         self.selection_method=selection_method
         self.update_method=update_method
         self.VMax=VMax
+        self.h=h
+        
+       
         if learning_rate_scheduler is None:
             self.learning_rate_scheduler = CountLearningRateScheduler(self.NUM_STATES, self.NUM_ACTIONS)
         else:
@@ -38,7 +43,7 @@ class PVFLearning(object):
         self.NG = np.zeros(shape=(self.NUM_STATES, self.NUM_ACTIONS,self.N),  dtype=(float,2))
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
-                self.NG[state, action, :, 0]=rand.uniform(high=np.ones(self.N)*self.VMax)
+                self.NG[state, action, :, 0]=rand.uniform(0, self.VMax, self.N)
                 self.NG[state, action, :, 1]=1/self.N
         self.returns=np.zeros(shape=(self.NUM_STATES, self.NUM_ACTIONS))
         for state in range(self.NUM_STATES):
@@ -52,12 +57,15 @@ class PVFLearning(object):
             self.update_maximum(state, action, reward, next_state, done)
         elif self.update_method==PVFLearning.Q_VALUE_SAMPLING_SORTED:
             self.update_sampling_sorted(state, action, reward, next_state, done)
+        elif self.update_method==PVFLearning.PARTICLE_CLASSIC:
+            self.update_particle_filter(state, action, reward, next_state, done)
         else:
             self.update_weighted_maximum(state, action, reward, next_state, done)
            
-            
+    
+    
     def update_sampling(self, state, action, reward, next_state, done):
-        means=self.NG[next_state, :]
+        means=self.returns[next_state, :]
         best_action=self.getMax(means)
         alpha = self.learning_rate_scheduler.get_learning_rate(state, action)
         particles=np.zeros(self.N)
@@ -72,7 +80,7 @@ class PVFLearning(object):
         self.returns[state, action]=np.mean(particles)
     
     def update_sampling_sorted(self, state, action, reward, next_state, done):
-        means=self.NG[next_state, :]
+        means=self.returns[next_state, :]
         best_action=self.getMax(means)
         alpha = self.learning_rate_scheduler.get_learning_rate(state, action)
         particles=np.zeros(self.N)
@@ -80,8 +88,8 @@ class PVFLearning(object):
         old_weights=self.NG[state, action, :, 1]
         new_particles=self.NG[next_state, best_action, :, 0]
         new_weights=self.NG[next_state, best_action, :, 1]
-        old_samples =np.sort( np.random.choice(a=old_particles,size=(N), p=old_weights))
-        new_samples = np.sort(np.random.choice(a=new_particles,size=(N), p=new_weights))
+        old_samples =np.sort(old_particles)
+        new_samples = np.sort(new_particles)
         particles=(1-alpha)*old_samples+alpha*(reward+self.discount_factor*new_samples)
         self.NG[state, action, :, 0]=particles
         self.returns[state, action]=np.mean(particles)
@@ -142,6 +150,45 @@ class PVFLearning(object):
             self.returns[state, action]=np.mean(particles)
         else:
             self.update_sampling(state, action, reward, next_state, done)
+            
+    def update_particle_filter(self, state, action, reward, next_state, done):
+        if not done:
+            means=self.returns[next_state, :]
+            best_action=self.getMax(means)
+            alpha = self.learning_rate_scheduler.get_learning_rate(state, action)
+            old_particles=self.NG[state, action, :, 0]
+            old_weights=self.NG[state, action, :, 1]
+            new_particles=self.NG[next_state, best_action, :, 0]
+            target_index= np.random.choice(a=range(self.N),size=(1), p=old_weights)
+            target_sample=new_particles[target_index]
+            source_sample=np.random.choice(a=old_particles,size=(1), p=old_weights)
+            target=(1-alpha)*source_sample+alpha*(reward+self.discount_factor*target_sample)
+            
+            updated_weights=self.update_weights(target, old_particles, old_weights)
+            updated_weights=updated_weights/(np.sum(updated_weights))
+            if self.isResamplingNeeded(updated_weights):
+                self.NG[state, action, :, 0]=self.resampleParticles( old_particles, updated_weights)
+                self.NG[state, action, :, 1]=1/self.N
+                self.returns[state, action]=np.mean(self.NG[state, action, :, 0])
+            else:
+                self.NG[state, action, :, 1]=updated_weights
+                self.returns[state, action]=np.inner(self.NG[state, action, :, 0], self.NG[state, action, :, 1])
+            
+        else:
+            self.update_sampling(state, action, reward, next_state, done)
+    
+    def update_weights(self, x, particles, weights):
+        return weights*(1/self.h)*self.K((-1*particles+x)/self.h)
+        
+    def K(self, x):
+        return 0.5*(1/np.pi)*np.exp(-0.5*(x**2))
+        
+    def isResamplingNeeded(self, weights):
+        Neff=self.N/(1+(N**2)*np.var(weights))
+        return Neff<self.Nth
+        
+    def resampleParticles(self, particles, weights):
+        return np.random.choice(a=particles,size=(self.N), p=weights)
     
     def sampleParticle(self, state, action, index=False):
         values=self.NG[state, action, :, 0]
@@ -212,20 +259,11 @@ class PVFLearning(object):
         else:
             raise Exception('Selection Method not Valid')
     def set_update_method(self,  method=1):
-        if method in [PVFLearning.Q_VALUE_SAMPLING,PVFLearning.MAXIMUM_UPDATE, PVFLearning.WEIGHTED_MAXIMUM_UPDATE,PVFLearning.Q_VALUE_SAMPLING_SORTED]:
+        if method in [PVFLearning.PARTICLE_CLASSIC, PVFLearning.Q_VALUE_SAMPLING,PVFLearning.MAXIMUM_UPDATE, PVFLearning.WEIGHTED_MAXIMUM_UPDATE,PVFLearning.Q_VALUE_SAMPLING_SORTED]:
             self.update_method=method
         else:
             raise Exception('Update Method not Valid')
     
-    def UCB_selection(self, NG, state):
-        #Sample one value for each action
-        samples=np.zeros(self.NUM_ACTIONS)
-        for i in range(self.NUM_ACTIONS):
-            mean=NG[state][i][0]
-            n=NG[state][i][2]
-            z=norm.ppf(1-self.delta/2)
-            samples[i]=mean+z/np.sqrt(self.tau*n)
-        return self.getMax(samples)
     
     def getMax(self, V):
         #brake ties

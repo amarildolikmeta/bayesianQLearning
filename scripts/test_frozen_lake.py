@@ -8,13 +8,14 @@ from GBQL import GBQLearning
 from BQL import BQLearning
 from QL import QLearning
 from PVF import  PVFLearning
+from count_pvf  import PVFLearning as PVF2
 import pandas as pd
 from tabulate import tabulate
 from QL import EpsilonScheduler
 
 #dictionary of algorithms
-algs={"GBQL":GBQLearning, "BQL":BQLearning, "QL":QLearning,"PVF":PVFLearning }
-update_methods={"Q_VALUE_SAMPLING_SORTED":PVFLearning.Q_VALUE_SAMPLING_SORTED,"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING, "MAXIMUM_UPDATE":PVFLearning.MAXIMUM_UPDATE, "WEIGHTED_MAXIMUM_UPDATE":PVFLearning.WEIGHTED_MAXIMUM_UPDATE, "MIXTURE_UPDATING": GBQLearning.MIXTURE_UPDATING}
+algs={"GBQL":GBQLearning, "BQL":BQLearning, "QL":QLearning,"PVF":PVFLearning, "PVF2":PVF2 }
+update_methods={"COUNT_BASED":PVF2.COUNT_BASED,"QUANTILE_UPDATE":PVF2.QUANTILE_UPDATE,"PARTICLE_CLASSIC":PVFLearning.PARTICLE_CLASSIC,"Q_VALUE_SAMPLING_SORTED":PVFLearning.Q_VALUE_SAMPLING_SORTED,"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING, "MAXIMUM_UPDATE":PVFLearning.MAXIMUM_UPDATE, "WEIGHTED_MAXIMUM_UPDATE":PVFLearning.WEIGHTED_MAXIMUM_UPDATE, "MIXTURE_UPDATING": GBQLearning.MIXTURE_UPDATING}
 selection_methods={"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING,"MYOPIC_VPI":PVFLearning.MYOPIC_VPI, "UCB":GBQLearning.UCB}
 discount_factor=0.99
 
@@ -25,18 +26,19 @@ def simulate(env_name,num_episodes,  len_episode, algorithm, update_method, sele
     NUM_ACTIONS=env.action_space.n
     NUM_EPISODES=num_episodes
     MAX_T=len_episode
-    if algorithm in ["PVF"]:
+    if algorithm in ["PVF", "PVF2"]:
         VMap={"NChain-v0":500, "FrozenLake-v0":1}
         vMax=VMap[env_name]
         agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax)
+        agent.set_selection_method(selection_methods[selection_method])
+        agent.set_update_method(update_methods[update_method])    
     elif algorithm in ["QL"]:
-        scheduler= EpsilonScheduler(0.2, 0.05,NUM_EPISODES,MAX_T)
+        scheduler= EpsilonScheduler(0.3, 0.00,50,1000)
         agent= QLearning((NUM_STATES , NUM_ACTIONS),scheduler=scheduler)
     else:
         agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS))
-    if algorithm in ["PVF", "GBQL"]:
-        agent.set_update_method(update_methods[update_method])
         agent.set_selection_method(selection_methods[selection_method])
+        agent.set_update_method(update_methods[update_method])    
     scores2=np.zeros(NUM_EPISODES)
     scores1=np.zeros(NUM_EPISODES)
     rewards=np.zeros(MAX_T)
@@ -45,18 +47,19 @@ def simulate(env_name,num_episodes,  len_episode, algorithm, update_method, sele
     #print_V_function(agent.get_v_function(), agent.NUM_STATES,env_name)
     #count how many times actions execute
     for episode in range(NUM_EPISODES):
-        if algorithm in ["PVF"]:
+        if algorithm in ["PVF", "PVF2"]:
             VMap={"NChain-v0":500, "FrozenLake-v0":1}
             vMax=VMap[env_name]
             agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax)
+            agent.set_selection_method(selection_methods[selection_method])
+            agent.set_update_method(update_methods[update_method])    
         elif algorithm in ["QL"]:
-            scheduler= EpsilonScheduler(0.2, 0.05,NUM_EPISODES,MAX_T)
+            scheduler= EpsilonScheduler(0.3, 0.00,50,1000)
             agent= QLearning((NUM_STATES , NUM_ACTIONS),scheduler=scheduler)
         else:
             agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS))
-        if algorithm in ["PVF", "GBQL"]:
-            agent.set_update_method(update_methods[update_method])
             agent.set_selection_method(selection_methods[selection_method])
+            agent.set_update_method(update_methods[update_method])    
         # Reset the environment
         obv = env.reset()
         # the initial state
@@ -169,8 +172,13 @@ if __name__ == "__main__":
     env_name="FrozenLake-v0"
     num_episodes=10
     len_episode=1000
+    
     algorithms={
-                            "QL":{"alg":"QL", "update":"", "selection":""}, 
+                        "PVF2_QU":{"alg":"PVF2", "update":"QUANTILE_UPDATE", "selection":"MYOPIC_VPI"}, 
+                        "PVF2_CB":{"alg":"PVF2", "update":"COUNT_BASED", "selection":"MYOPIC_VPI"}
+                        
+    }
+    '''   "QL":{"alg":"QL", "update":"", "selection":""}, 
                             "GBQL_WE_QS":{"alg":"GBQL", "update":"WEIGHTED_MAXIMUM_UPDATE", "selection":"Q_VALUE_SAMPLING"}, 
                             "GBQL_WE_MV":{"alg":"GBQL", "update":"WEIGHTED_MAXIMUM_UPDATE", "selection":"MYOPIC_VPI"}, 
                             "GBQL_MU_QS":{"alg":"GBQL", "update":"MIXTURE_UPDATING", "selection":"Q_VALUE_SAMPLING"}, 
@@ -182,8 +190,12 @@ if __name__ == "__main__":
                             "PVF_WE_QS":{"alg":"PVF", "update":"WEIGHTED_MAXIMUM_UPDATE", "selection":"Q_VALUE_SAMPLING"}, 
                             "PVF_WE_MV":{"alg":"PVF", "update":"WEIGHTED_MAXIMUM_UPDATE", "selection":"MYOPIC_VPI"}, 
                             "PVF_QSS_QS":{"alg":"PVF", "update":"Q_VALUE_SAMPLING_SORTED", "selection":"Q_VALUE_SAMPLING"}, 
-                            "PVF_QSS_MV":{"alg":"PVF", "update":"Q_VALUE_SAMPLING_SORTED", "selection":"MYOPIC_VPI"}
-    }
+                            "PVF_PC_QS":{"alg":"PVF", "update":"PARTICLE_CLASSIC", "selection":"Q_VALUE_SAMPLING"} , 
+                            "PVF_PC_MV":{"alg":"PVF", "update":"PARTICLE_CLASSIC", "selection":"MYOPIC_VPI"},  
+                            "PVF2_QS":{"alg":"PVF2", "update":"Q_VALUE_SAMPLING", "selection":"Q_VALUE_SAMPLING"}, 
+                            "PVF2_MV":{"alg":"PVF2", "update":"Q_VALUE_SAMPLING", "selection":"MYOPIC_VPI"},
+                            "PVF_QSS_MV":{"alg":"PVF", "update":"Q_VALUE_SAMPLING_SORTED", "selection":"MYOPIC_VPI"},
+'''
     num_algs=len(algorithms)
     headingList=["Algorithm", "Avg Score Phase 1", "Std Dev Phase 1" ,"Avg Score Phase 2","Std Dev Phase 2"]
     tableData={"Algorithm":[""]*num_algs, "Avg Score Phase 1":[1.]*num_algs, "Std Dev Phase 1":[1.]*num_algs ,"Avg Score Phase 2":[1.]*num_algs,"Std Dev Phase 2":[1.]*num_algs}
@@ -197,7 +209,7 @@ if __name__ == "__main__":
         i=i+1
     df=pd.DataFrame(tableData)
     print (tabulate(df, headers='keys', tablefmt='psql'))
-    df.to_csv("test_frozen_lake.csv", sep=',')
+    df.to_csv("test_frozen_lake_sorted.csv", sep=',')
     '''for label, y in rewardsToGo2.items():
         np.savetxt("rewardsToGo/"+label+"2", y, delimiter=",")
     for label, y in rewardsToGo.items():

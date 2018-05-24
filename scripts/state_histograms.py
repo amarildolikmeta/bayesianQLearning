@@ -13,7 +13,7 @@ from QL import EpsilonScheduler
 
 #dictionary of algorithms
 algs={"GBQL":GBQLearning, "BQL":BQLearning, "QL":QLearning,"PVF":PVFLearning }
-update_methods={"Q_VALUE_SAMPLING_SORTED":PVFLearning.Q_VALUE_SAMPLING_SORTED,"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING, "MAXIMUM_UPDATE":PVFLearning.MAXIMUM_UPDATE, "WEIGHTED_MAXIMUM_UPDATE":PVFLearning.WEIGHTED_MAXIMUM_UPDATE, "MIXTURE_UPDATING": GBQLearning.MIXTURE_UPDATING, "MOMENT_UPDATING":BQLearning.MOMENT_UPDATING}
+update_methods={"PARTICLE_CLASSIC":PVFLearning.PARTICLE_CLASSIC,"Q_VALUE_SAMPLING_SORTED":PVFLearning.Q_VALUE_SAMPLING_SORTED,"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING, "MAXIMUM_UPDATE":PVFLearning.MAXIMUM_UPDATE, "WEIGHTED_MAXIMUM_UPDATE":PVFLearning.WEIGHTED_MAXIMUM_UPDATE, "MIXTURE_UPDATING": GBQLearning.MIXTURE_UPDATING, "MOMENT_UPDATING":BQLearning.MOMENT_UPDATING}
 selection_methods={"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING,"MYOPIC_VPI":PVFLearning.MYOPIC_VPI, "UCB":GBQLearning.UCB}
 discount_factor=0.99
 
@@ -179,7 +179,9 @@ if __name__ == "__main__":
                             "PVF_WE_QS":{"alg":"PVF", "update":"WEIGHTED_MAXIMUM_UPDATE", "selection":"Q_VALUE_SAMPLING"}, 
                             "PVF_WE_MV":{"alg":"PVF", "update":"WEIGHTED_MAXIMUM_UPDATE", "selection":"MYOPIC_VPI"}, 
                            "PVF_QSS_QS":{"alg":"PVF", "update":"Q_VALUE_SAMPLING_SORTED", "selection":"Q_VALUE_SAMPLING"}, 
-                           "PVF_QSS_MV":{"alg":"PVF", "update":"Q_VALUE_SAMPLING_SORTED", "selection":"MYOPIC_VPI"} 
+                           "PVF_QSS_MV":{"alg":"PVF", "update":"Q_VALUE_SAMPLING_SORTED", "selection":"MYOPIC_VPI"} , 
+                            "PVF_PC_QS":{"alg":"PVF", "update":"PARTICLE_CLASSIC", "selection":"Q_VALUE_SAMPLING"} , 
+                           "PVF_PC_MV":{"alg":"PVF", "update":"PARTICLE_CLASSIC", "selection":"MYOPIC_VPI"} 
                            }
     headingList=["Algorithm", "Avg Score Phase 1", "Std Dev Phase 1" ,"Avg Score Phase 2","Std Dev Phase 2"]
     tableData={"Algorithm":[""]*11, "Avg Score Phase 1":[1.]*11, "Std Dev Phase 1":[1.]*11 ,"Avg Score Phase 2":[1.]*11,"Std Dev Phase 2":[1.]*11}
