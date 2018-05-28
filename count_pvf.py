@@ -14,7 +14,8 @@ class PVFLearning(object):
     MYOPIC_VPI=1
     COUNT_BASED=0
     QUANTILE_UPDATE=1
-    def __init__(self, sh, gamma=0.99, learning_rate_scheduler=None, selection_method=1, update_method=0, VMax=Vmax,N=100, n_prior_particles=1, h=1):
+    SORTED_UPDATE=2
+    def __init__(self, sh, gamma=0.99, learning_rate_scheduler=None, selection_method=1, update_method=0, VMax=Vmax,N=100, n_prior_particles=1, h=1, exponent=1, keepHistory=False, quantileCount=False):
         
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
@@ -22,32 +23,45 @@ class PVFLearning(object):
         self.delta=0.05
         self.N=N
         self.n_prior_particles=n_prior_particles
-        self.Nth=0.5*N
         self.t=0
         self.selection_method=selection_method
         self.update_method=update_method
         self.VMax=VMax
         self.h=h
-        
+        self.keepHistory=keepHistory
+        self.quantileCount=quantileCount
         if learning_rate_scheduler is None:
-            self.learning_rate_scheduler = CountLearningRateScheduler(self.NUM_STATES, self.NUM_ACTIONS)
+            self.learning_rate_scheduler = CountLearningRateScheduler(self.NUM_STATES, self.NUM_ACTIONS, power=exponent)
         else:
             self.learning_rate_scheduler = learning_rate_scheduler
         #initialize the samples and counts
         self.NG = np.zeros(shape=(self.NUM_STATES, self.NUM_ACTIONS,self.N),  dtype=(float,2))
         self.means=np.zeros(shape=(self.NUM_STATES, self.NUM_ACTIONS))
+        #keep history of the postitions of the partciles
+        self.history = np.empty(shape=(self.NUM_STATES, self.NUM_ACTIONS,self.N),  dtype=(object))
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
                 self.NG[state, action, :, 0]=rand.uniform(0, self.VMax, self.N)
                 self.NG[state, action, :, 1]=np.ones(self.N) * self.n_prior_particles / self.N
                 self.means[state, action]=self.mean(self.NG[state, action, :, 0],self.NG[state, action, :, 1])
+                for p in range(self.N):
+                    self.history[state, action, p]=[self.NG[state, action, p, 0]]
                 
+    def addToHistory(self,state, action):
+        particles=self.NG[state, action, :, 0]
+        for p in range(self.N):
+            self.history[state, action, p].append(particles[p])
+    
     def update(self, state, action, reward, next_state, done=False):
         if self.update_method==PVFLearning.COUNT_BASED:
             self.update_count( state, action, reward, next_state, done)
         elif self.update_method==PVFLearning.QUANTILE_UPDATE:
              self.update_quantile( state, action, reward, next_state, done)
-            
+        elif self.update_method==PVFLearning.SORTED_UPDATE:
+             self.update_sorted( state, action, reward, next_state, done)
+        if self.keepHistory:
+            self.addToHistory(state, action)
+        
     def update_count(self, state, action, reward, next_state, done):
         means=self.means[next_state, :]
         best_action=self.getMax(means)
@@ -61,9 +75,12 @@ class PVFLearning(object):
         counter = np.append(old_counts, new_counts)
         weights = counter / np.sum(counter)
         #Subsample
-        self.NG[state, action, :, 0] = np.random.choice(particles, self.N, p=weights, replace=False)
+        if self.quantileCount==False:
+            self.NG[state, action, :, 0] = np.random.choice(particles, self.N, p=weights, replace=False)
+        else:
+            quantiles=[k*(100/(self.N-1)) for k in range(self.N) ]
+            self.NG[state, action, :, 0] =np.percentile(self.weight_array(particles, counter),quantiles)
         self.NG[state, action, :, 1] = np.ones(self.N) * np.sum(counter) / len(counter)
-        weights = self.NG[state, action, :, 1] / np.sum(self.NG[state, action, :, 1])
         self.means[state, action]=self.mean(self.NG[state, action, :, 0],self.NG[state, action, :, 1])
     
     def update_quantile(self, state, action, reward, next_state, done):
@@ -80,6 +97,29 @@ class PVFLearning(object):
             j=j+1
         self.NG[state, action, :, 0] =np.percentile(tmp,[k*(100/(len(old_particles)-1)) for k in range(len(old_particles)) ])
         self.means[state, action]=self.mean(self.NG[state, action, :, 0],self.NG[state, action, :, 1])
+    
+    def update_sorted(self, state, action, reward, next_state, done):
+        means=self.means[next_state, :]
+        best_action=self.getMax(means)
+        alpha = self.learning_rate_scheduler.get_learning_rate(state, action)
+        particles=np.zeros(self.N)
+        old_particles=self.NG[state, action, :, 0]
+        new_particles=self.NG[next_state, best_action, :, 0]
+        old_particles=np.sort(old_particles)
+        new_particles=np.sort(new_particles)
+        target=reward+self.discount_factor*new_particles
+        particles[:]=(1-alpha)*old_particles+(alpha)*target
+        #Subsample
+        self.NG[state, action, :, 0] = particles[:]=(1-alpha)*old_particles+(alpha)*target
+        self.means[state, action]=self.mean(self.NG[state, action, :, 0],self.NG[state, action, :, 1])
+    
+    def weight_array(self, ar, weights):
+        zipped = zip(ar, weights)
+        weighted =[]
+        for i in zipped:
+            for j in range(int(i[1])+1):
+                weighted.append(i[0])
+        return weighted
     
     def mean(self, particles, counter):
         weights = counter / np.sum(counter)
@@ -103,6 +143,12 @@ class PVFLearning(object):
     def resampleParticles(self, particles, weights):
         return np.random.choice(a=particles,size=(self.N), p=weights)
     
+    def getNumParticles(self):
+        return self.N
+    
+    def getHistory(self):
+        return self.history
+        
     def sampleParticle(self, state, action, index=False):
         values=self.NG[state, action, :, 0]
         if index:
@@ -164,7 +210,7 @@ class PVFLearning(object):
             raise Exception('Selection Method not Valid')
     
     def set_update_method(self,  method=0):
-        if method in [PVFLearning.COUNT_BASED,PVFLearning.QUANTILE_UPDATE]:
+        if method in [PVFLearning.COUNT_BASED,PVFLearning.QUANTILE_UPDATE, PVFLearning.SORTED_UPDATE]:
             self.update_method=method
         else:
             raise Exception('Update Method not Valid')
@@ -195,7 +241,7 @@ class PVFLearning(object):
     def get_v_function(self):
         v=np.zeros(self.NUM_STATES)
         for i in range(self.NUM_STATES):
-            means=self.returns[i, :]
+            means=self.means[i, :]
             v[i]=np.max(means)
         return v
         
@@ -206,5 +252,32 @@ class PVFLearning(object):
         a=np.zeros(self.NUM_STATES)
         for i in range(self.NUM_STATES):
             means=self.NG[i, :,]
-            a[i]=np.argmax(means)
+            a[i]=self.getMax(means)
         return a
+
+def print_best_actions(V, num_states, name):
+    if name=="NChain-v0":
+        l=[]
+        for i in range(num_states):
+            a=V[i]
+            if a==0:
+                l.append("Forward")
+            else:
+                l.append("Backward")
+        print(l)
+    else:
+        n=int(math.sqrt(num_states))
+        print("Best Action are:")
+        for i in range(n):
+            l=[]
+            for j in range(n):
+                a=V[i*n+j]
+                if a==0:
+                    l.append("Left")
+                elif a==1:
+                    l.append("Down")
+                elif a==2:
+                    l.append("Right")
+                else:
+                    l.append("Up")
+            print(l)
