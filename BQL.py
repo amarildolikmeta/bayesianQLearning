@@ -296,35 +296,31 @@ class BQLearning(object):
     def get_best_actions(self):
         return np.argmax(self.NG[:, :, 0], axis=1)
         
-def simulate(env_name, num_episodes, len_episode):
+def simulate(env_name, num_episodes, len_episode, update_method, selection_method):
     # Initialize the  environment
     env = gym.make(env_name)
     NUM_STATES=env.observation_space.n
     NUM_ACTIONS=env.action_space.n
-    agent=BQLearning(sh=(NUM_STATES, NUM_ACTIONS))
     NUM_EPISODES=num_episodes
     MAX_T=len_episode
-    #selection_method=agent.Q_VALUE_SAMPLING
-    selection_method=agent.MYOPIC_VPI
-    update_method=agent.MOMENT_UPDATING
     #update_method=agent.MIXTURE_UPDATING
-    scores=np.zeros(NUM_EPISODES)
+    scores2=np.zeros(NUM_EPISODES)
+    scores1=np.zeros(NUM_EPISODES)
     rewards=np.zeros(MAX_T)
     rewardsToGo=np.zeros(MAX_T)
-    print("Running %d episodes of %d steps"%(num_episodes, len_episode))
-    print("Initial V:")
-    print_V_function(agent.get_v_function(), agent.NUM_STATES,env_name)
     for episode in range(NUM_EPISODES):
+        agent=BQLearning(sh=(NUM_STATES, NUM_ACTIONS))
+        agent.set_selection_method(selection_method)
+        agent.set_update_method(update_method)
         # Reset the environment
         obv = env.reset()
         # the initial state
         state_0 =obv
         #reset score
         score=0
+        #learn 1 phase
         for i in range(MAX_T):
-            #env.render()
-            # Select an action , specify method if needed
-            action = agent.select_action(state_0,selection_method)
+            action = agent.select_action(state_0)
             # Execute the action
             obv, reward, done, _ = env.step(action)
             score+=reward
@@ -332,7 +328,31 @@ def simulate(env_name, num_episodes, len_episode):
             # Observe the result
             state = obv
             # Update the Q based on the result
-            agent.update(state_0, action, reward, state, done, update_method)
+            agent.update(state_0, action, reward, state, done)
+            # Setting up for the next iteration
+            state_0 = state
+            if done:
+                #print("Episode %d finished after %f time steps, score=%d" % (episode, i, score))
+                break
+        scores1[episode]=score
+        obv = env.reset()
+        # the initial state
+        state_0 =obv
+        #reset score
+        score=0
+        
+        for i in range(MAX_T):
+            #env.render()
+            # Select an action , specify method if needed
+            action = agent.select_action(state_0)
+            # Execute the action
+            obv, reward, done, _ = env.step(action)
+            score+=reward
+            rewards[i]=reward
+            # Observe the result
+            state = obv
+            # Update the Q based on the result
+            agent.update(state_0, action, reward, state, done)
             # Setting up for the next iteration
             state_0 = state
             if done:
@@ -341,14 +361,13 @@ def simulate(env_name, num_episodes, len_episode):
         for i in range(MAX_T):
             for j in range(i, MAX_T):
                 rewardsToGo[i]+=rewards[j]*discount_factor**(j-i)
-        scores[episode]=score
+        scores2[episode]=score
     for i in range(MAX_T):
         rewardsToGo[i]=rewardsToGo[i]/NUM_EPISODES
-    print("Avg Score score is %f Standard Deviation is %f" % (np.mean(scores), np.std(scores)))
-    print_V_function(agent.get_v_function(), agent.NUM_STATES, env_name)
-    print_best_actions(agent.get_best_actions(), agent.NUM_STATES,env_name)
-    print(agent.get_q_function())
-    plt.plot(range(MAX_T), rewardsToGo)
+    #print("Results:"+update_method+" "+selection_method)
+    print("Avg Score Phase1:%f| std Phase 1:%f|Avg Score Phase2:%f| std Phase 2:%f|" % (np.mean(scores1), np.std(scores1), np.mean(scores2), np.std(scores2)))
+    #print(agent.get_q_function())
+    #plt.plot(range(MAX_T), rewardsToGo)
 
     plt.show()
 def getCumulativeDistribution(mean, lamb, alpha, beta, x):
@@ -398,7 +417,7 @@ if __name__ == "__main__":
     argv=sys.argv
     if len(argv)<2:
         print("usage BQL.py <env_name> <num_episodes> <len_episode>")
-        env_name="FrozenLake-v0"
+        env_name="NChain-v0"
     elif argv[1] in ["NChain-v0", "FrozenLake-v0"]:
         env_name=argv[1]
     else:
@@ -406,13 +425,14 @@ if __name__ == "__main__":
     if len(argv)>2:
         num_episodes=int(argv[2])
     else:
-        print("Executing 1000 episodes")
-        num_episodes=1000
+        print("Executing 10 episodes")
+        num_episodes=10
     if len(argv)>3:
         len_episode=int(argv[3])
     else:
-        print("Executing 100 step episodes")
-        len_episode=100
+        print("Executing 1000 step episodes")
+        len_episode=1000
     print("Testing on environment "+env_name)
-    simulate(env_name, num_episodes, len_episode)
-   
+    simulate(env_name, num_episodes, len_episode,BQLearning.MOMENT_UPDATING,BQLearning.Q_VALUE_SAMPLING  )
+    simulate(env_name, num_episodes, len_episode,BQLearning.MOMENT_UPDATING,BQLearning.MYOPIC_VPI  )
+
