@@ -1,49 +1,42 @@
 import gym
 import numpy as np
 import math
+import matplotlib.pyplot as plt
 import sys
 import os.path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from GBQL import GBQLearning
-from BQL import BQLearning
-from QL import QLearning
-from PVF import  PVFLearning 
-from count_pvf import PVFLearning as PVF2
-from QL import EpsilonScheduler
+from count_pvf import  PVFLearning
 import pandas as pd
 from tabulate import tabulate
 
 #dictionary of algorithms
-algs={"GBQL":GBQLearning, "BQL":BQLearning, "QL":QLearning,"PVF":PVFLearning, "PVF2":PVF2 }
-update_methods={"PARTICLE_CLASSIC":PVFLearning.PARTICLE_CLASSIC,"Q_VALUE_SAMPLING_SORTED":PVFLearning.Q_VALUE_SAMPLING_SORTED,"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING, "MAXIMUM_UPDATE":PVFLearning.MAXIMUM_UPDATE, "WEIGHTED_MAXIMUM_UPDATE":PVFLearning.WEIGHTED_MAXIMUM_UPDATE,  "MIXTURE_UPDATING": GBQLearning.MIXTURE_UPDATING, "MOMENT_UPDATING":BQLearning.MOMENT_UPDATING}
-selection_methods={"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING,"MYOPIC_VPI":PVFLearning.MYOPIC_VPI, "UCB":GBQLearning.UCB}
+algs={"PVF":PVFLearning }
+update_methods={"SORTED_UPDATE":PVFLearning.SORTED_UPDATE,"COUNT_BASED":PVFLearning.COUNT_BASED,"QUANTILE_UPDATE":PVFLearning.QUANTILE_UPDATE,}
+selection_methods={"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING,"MYOPIC_VPI":PVFLearning.MYOPIC_VPI,}
 discount_factor=0.99
 
-def simulate(env_name,  algorithm, update_method, selection_method):
+def simulate(env_name,  algorithm,update_method,  selection_method):
     # Initialize the  environment
     env = gym.make(env_name)
     NUM_STATES=env.observation_space.n
     NUM_ACTIONS=env.action_space.n
     max_episodes=100
-    convergence_th=5
+    convergence_th=10
     ##Two counters first one to see when the best policy is learned, second one when the suboptimal one is learned
     count=0
     count2=0
     episode_count=0
-    if algorithm in ["PVF", "PVF2"]:
+    exponent=1
+    if algorithm in ["PVF"]:
         VMap={"NChain-v0":500, "FrozenLake-v0":1}
         vMax=VMap[env_name]
-        agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax)
+        if update_method in ["SORTED_UPDATE"]:
+            exponent=0.2
+        agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax, exponent=exponent)
         agent.set_selection_method(selection_methods[selection_method])
-        if algorithm in ["PVF"]:
-            agent.set_update_method(update_methods[update_method])    
-    elif algorithm in ["QL"]:
-        scheduler= EpsilonScheduler(0.3, 0.00,50,1000)
-        agent= QLearning((NUM_STATES , NUM_ACTIONS),scheduler=scheduler)
+        agent.set_update_method(update_methods[update_method])
     else:
         agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS))
-        agent.set_selection_method(selection_methods[selection_method])
-        agent.set_update_method(update_methods[update_method])    
     while True:
         # Reset the environment
         obv = env.reset()
@@ -57,8 +50,9 @@ def simulate(env_name,  algorithm, update_method, selection_method):
             # Select an action 
             action = agent.select_action(state_0)
             counts[action]=counts[action]+1
-            # Execute the action
-            obv, reward, done, _ = env.step(action)
+            # Execute the revert action
+            rev_action=(action+1)%2
+            obv, reward, done, _ = env.step(rev_action)
             score+=reward
             # Observe the result
             state = obv
@@ -70,11 +64,11 @@ def simulate(env_name,  algorithm, update_method, selection_method):
                #print("Episode %d finished after %f time steps, score=%d" % (episode, i, score))
                break
         episode_count=episode_count+1
-        if counts[1]==0:
+        if counts[0]==0:
             count=count+1
         else:
             count=0
-        if counts[0]==0:
+        if counts[1]==0:
             count2=count2+1
         else:
             count2=0
@@ -87,8 +81,6 @@ def simulate(env_name,  algorithm, update_method, selection_method):
         if episode_count>max_episodes:
             print(algorithm +" "+update_method+" "+selection_method+ " did not converge in less than %d episodes" %(max_episodes))
             return -1
-    
-    
 def print_V_function(V, num_states, name):
     if name=="NChain-v0":
         print(V)
@@ -129,32 +121,17 @@ def print_best_actions(V, num_states, name):
             print(l)
 
 if __name__ == "__main__":
+    print(selection_methods)
     env_name="NChain-v0"
     num_episodes=50
     len_episode=1000
+    
     algorithms={
-                          "PVF_QSS_MV":{"alg":"PVF", "update":"Q_VALUE_SAMPLING_SORTED", "selection":"MYOPIC_VPI"} 
-    }
-    '''                    "QL":{"alg":"QL", "update":"", "selection":""}, 
-                            "GBQL_WE_QS":{"alg":"GBQL", "update":"WEIGHTED_MAXIMUM_UPDATE", "selection":"Q_VALUE_SAMPLING"}, 
-                            "GBQL_WE_MV":{"alg":"GBQL", "update":"WEIGHTED_MAXIMUM_UPDATE", "selection":"MYOPIC_VPI"}, 
-                            "GBQL_MU_QS":{"alg":"GBQL", "update":"MIXTURE_UPDATING", "selection":"Q_VALUE_SAMPLING"}, 
-                            "GBQL_MU_MV":{"alg":"GBQL", "update":"MIXTURE_UPDATING", "selection":"MYOPIC_VPI"}, 
-                            "GBQL_WE_UC":{"alg":"GBQL", "update":"WEIGHTED_MAXIMUM_UPDATE", "selection":"UCB"}, 
-                            "GBQL_MU_UC":{"alg":"GBQL", "update":"MIXTURE_UPDATING", "selection":"UCB"}, 
-                            "PVF_QS_QS":{"alg":"PVF", "update":"Q_VALUE_SAMPLING", "selection":"Q_VALUE_SAMPLING"}, 
-                            "PVF_QS_MV":{"alg":"PVF", "update":"Q_VALUE_SAMPLING", "selection":"MYOPIC_VPI"}, 
-                            "PVF2_QS":{"alg":"PVF2", "update":"Q_VALUE_SAMPLING", "selection":"Q_VALUE_SAMPLING"}, 
-                            "PVF2_MV":{"alg":"PVF2", "update":"Q_VALUE_SAMPLING", "selection":"MYOPIC_VPI"}
-                            
+                           
+                           "PVF_SU":{"alg":"PVF", "update":"SORTED_UPDATE", "selection":"MYOPIC_VPI"}, 
+                           "PVF_CB":{"alg":"PVF", "update":"COUNT_BASED","selection":"MYOPIC_VPI"} , 
                            }
-     "PVF_WE_QS":{"alg":"PVF", "update":"WEIGHTED_MAXIMUM_UPDATE", "selection":"Q_VALUE_SAMPLING"}, 
-                            "PVF_WE_MV":{"alg":"PVF", "update":"WEIGHTED_MAXIMUM_UPDATE", "selection":"MYOPIC_VPI"}, 
-                           
-                           
-                           "PVF_PC_QS":{"alg":"PVF", "update":"PARTICLE_CLASSIC", "selection":"Q_VALUE_SAMPLING"} , 
-                           "PVF_PC_MV":{"alg":"PVF", "update":"PARTICLE_CLASSIC", "selection":"MYOPIC_VPI"} '''
-                        
+                           #"PVF_QU":{"alg":"PVF", "update":"QUANTILE_UPDATE", "selection":"MYOPIC_VPI"},
     num_algs=len(algorithms)
     headingList=["Algorithm", "Episodes to convergence", "Std Dev", "Converged", "Did not Converge"]
     tableData={"Algorithm":[""]*num_algs, "Episodes to convergence":[1.]*num_algs, "Std Dev":[1.]*num_algs, "Converged":[1]*num_algs, "Did not Converge":[1]*num_algs, }
@@ -164,7 +141,7 @@ if __name__ == "__main__":
     for key, value in algorithms.items():
         tableData["Algorithm"][i]=key
         for j in range(num_runs):
-            results[j]=simulate(env_name,value["alg"], value["update"], value["selection"])
+            results[j]=simulate(env_name,value["alg"],value["update"],  value["selection"])
         res=np.where(results>-1)[:][0]
         res=results[res]
         print(res)
@@ -178,4 +155,7 @@ if __name__ == "__main__":
         i=i+1
     df=pd.DataFrame(tableData)
     print (tabulate(df, headers='keys', tablefmt='psql'))
-    df.to_csv("convergence_nchain_sorted.csv", sep=',')
+    df.to_csv("convergence_nchain_count_pvf.csv", sep=',')
+    
+    
+

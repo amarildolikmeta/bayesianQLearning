@@ -1,7 +1,7 @@
 import sys
 import os.path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from envs.chain_discrete import NChainEnv
+from envs.nchain_discrete import NChainEnv
 from algorithms.value_iteration import ValueIteration
 from algorithms.q_learning import QLearner
 from algorithms.sarsa import SarsaLearner
@@ -14,7 +14,7 @@ import gym
 
 env = gym.make('FrozenLake-v0')
 
-vi = ValueIteration(env, discount_factor=0.99, horizon=100)
+vi = ValueIteration(env, discount_factor=0.99, horizon=10000)
 vi.fit()
 
 V = vi.get_v_function()

@@ -25,9 +25,9 @@ class ConstantLearningRateScheduler(LearningRateScheduler):
 
 
 class CountLearningRateScheduler(LearningRateScheduler):
-    def __init__(self, nS, nA, schedulers=None):
+    def __init__(self, nS, nA, schedulers=None, power=1.0):
         if schedulers is None:
-            self.schedulers = {s: {a: scheduler.CountScheduler(0., 1., power=1.) for a in range(nA)} for s in range(nS)}
+            self.schedulers = {s: {a: scheduler.CountScheduler(0., 1., power=power) for a in range(nA)} for s in range(nS)}
         else:
             self.schedulers = schedulers
         self.init_schedulers = copy.deepcopy(self.schedulers)

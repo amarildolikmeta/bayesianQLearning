@@ -1,6 +1,3 @@
-import sys
-import os.path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from envs.nchain_discrete import NChainEnv
 from algorithms.value_iteration import ValueIteration
 from algorithms.q_learning import QLearner
@@ -9,12 +6,12 @@ from algorithms.expected_sarsa import ExpectedSarsaLearner
 from algorithms.utils.learning_rate_scheduler import *
 from algorithms.utils.explorator import *
 import matplotlib.pyplot as plt
-from algorithms.utils import scheduler
 from algorithms.utils import utils
+import gym
 
-env = NChainEnv(slip=0.2, small=2.)
+env = gym.make('FrozenLake-v0')
 
-vi = ValueIteration(env, discount_factor=0.99, horizon=1000)
+vi = ValueIteration(env, discount_factor=0.99, horizon=100)
 vi.fit()
 
 V = vi.get_v_function()
@@ -23,24 +20,12 @@ policy = vi.get_policy()
 print('True Qfunction %s' % Q)
 print('Optimal policy %s' % policy)
 
-max_iter = 15000
+max_iter = 10000
 horizon = 100
 
-class EpsilonScheduler(scheduler.Scheduler):
-
-    def __init__(self, init_value, min_value):
-        update_rule = lambda value, t: init_value * (1 - t / (max_iter * horizon)) ** 2
-        super(EpsilonScheduler, self).__init__(min_value, init_value, update_rule)
-
-class AlphaScheduler(scheduler.Scheduler):
-    def __init__(self, init_value, min_value):
-        update_rule = lambda value, t: init_value * (1 - t / (max_iter * horizon))
-        super(AlphaScheduler, self).__init__(min_value, init_value, update_rule)
-
-
-onpolicy_explorator = EpsilonGreedyExplorator(epsilon_scheduler=EpsilonScheduler(0.2, 0.))
-offpolicy_explorator = EpsilonGreedyExplorator(epsilon_scheduler=EpsilonScheduler(0.2, 0.05))
-learning_rate_scheduler = LearningRateScheduler(alpha_scheduler=AlphaScheduler(1., 0.01))
+onpolicy_explorator = EpsilonGreedyExplorator(epsilon_init=0.5, epsilon_min=0.)
+offpolicy_explorator = EpsilonGreedyExplorator(epsilon_init=0.5, epsilon_min=0.05)
+learning_rate_scheduler = CountLearningRateScheduler(env.observation_space.n, env.action_space.n)
 
 sarsa = SarsaLearner(env,
                      discount_factor=0.99,
@@ -67,7 +52,7 @@ ql = QLearner(env,
               explorator=offpolicy_explorator)
 ql.fit(max_episodes=max_iter)
 
-ma_window = 50
+ma_window = 100
 
 fig, ax = plt.subplots()
 ax.plot([0, len(ql.return_)], [V[0], V[0]], color='k', linestyle='dashed', label='optimal')

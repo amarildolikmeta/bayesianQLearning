@@ -1,6 +1,3 @@
-import sys
-import os.path
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from envs.nchain_discrete import NChainEnv
 from algorithms.value_iteration import ValueIteration
 from algorithms.q_learning import QLearner
@@ -23,8 +20,8 @@ policy = vi.get_policy()
 print('True Qfunction %s' % Q)
 print('Optimal policy %s' % policy)
 
-max_iter = 15000
-horizon = 100
+max_iter = 50
+horizon = 1000
 
 class EpsilonScheduler(scheduler.Scheduler):
 
