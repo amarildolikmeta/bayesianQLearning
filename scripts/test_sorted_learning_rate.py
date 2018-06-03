@@ -8,7 +8,7 @@ import pandas as pd
 from tabulate import tabulate
 import matplotlib.pyplot as plt
 discount_factor=0.99
-update_methods={"COUNT_BASED":PVF.COUNT_BASED,"QUANTILE_UPDATE":PVF.QUANTILE_UPDATE,"SORTED_UPDATE":PVF.SORTED_UPDATE}
+update_methods={"COUNT_BASED":PVF.COUNT_BASED,"QUANTILE_UPDATE":PVF.QUANTILE_UPDATE,"SORTED_UPDATE":PVF.SORTED_UPDATE, "QUANTILE_REGRESSION":PVF.QUANTILE_REGRESSION}
 selection_methods={"Q_VALUE_SAMPLING":PVF.Q_VALUE_SAMPLING,"MYOPIC_VPI":PVF.MYOPIC_VPI}
 def simulate(env_name,num_episodes,  len_episode,update_method,  selection_method, power=1):
     # Initialize the  environment
@@ -19,19 +19,13 @@ def simulate(env_name,num_episodes,  len_episode,update_method,  selection_metho
     MAX_T=len_episode
     VMap={"NChain-v0":500, "FrozenLake-v0":1}
     vMax=VMap[env_name]
-    agent=PVF(sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax, exponent=power)
-    agent.set_selection_method(selection_method)
-    agent.set_update_method(update_method)
+    
     scores1=np.zeros(NUM_EPISODES)
     scores2=np.zeros(NUM_EPISODES)
     
     #print_V_function(agent.get_v_function(), agent.NUM_STATES,env_name)
     #count how many times actions execute
-    counts=np.zeros(agent.NUM_ACTIONS)
     for episode in range(NUM_EPISODES):
-        
-        VMap={"NChain-v0":500, "FrozenLake-v0":1}
-        vMax=VMap[env_name]
         agent=PVF(sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax, exponent=power)
         agent.set_selection_method(selection_method)
         agent.set_update_method(update_method)
@@ -41,21 +35,26 @@ def simulate(env_name,num_episodes,  len_episode,update_method,  selection_metho
         state_0 =obv
         #reset score
         score=0
-        #learn 10 episodes then measure 
+        #phase1
         for i in range(MAX_T):
-            action = agent.select_action(state_0)
-            # Execute the action
-            obv, reward, done, _ = env.step(action)
-            score+=reward
-            # Observe the result
-            state = obv
-            # Update the Q based on the result
-            agent.update(state_0, action, reward, state, done)
-            # Setting up for the next iteration
-            state_0 = state
-            if done:
-                #print("Episode %d finished after %f time steps, score=%d" % (episode, i, score))
-                break
+            obv = env.reset()
+            #the initial state
+            state_0 =obv
+            #reset score
+            while True:
+                action = agent.select_action(state_0)
+                # Execute the action
+                obv, reward, done, _ = env.step(action)
+                score+=reward
+                # Observe the result
+                state = obv
+                # Update the Q based on the result
+                agent.update(state_0, action, reward, state, done)
+                # Setting up for the next iteration
+                state_0 = state
+                if done:
+                    #print("Episode %d finished after %f time steps, score=%d" % (episode, i, score))
+                    break
         scores1[episode]=score
         obv = env.reset()
         # the initial state
@@ -63,24 +62,29 @@ def simulate(env_name,num_episodes,  len_episode,update_method,  selection_metho
         #reset score
         score=0
         for i in range(MAX_T):
-            #env.render()
-            # Select an action 
-            action = agent.select_action(state_0)
-            counts[action]=counts[action]+1
-            # Execute the action
-            obv, reward, done, _ = env.step(action)
-            score+=reward
-            # Observe the result
-            state = obv
-            # Update the Q based on the result
-            agent.update(state_0, action, reward, state, done)
-            # Setting up for the next iteration
-            state_0 = state
-            if done:
-               #print("Episode %d finished after %f time steps, score=%d" % (episode, i, score))
-               break
+            obv = env.reset()
+            # the initial state
+            state_0 =obv
+            #reset score
+            while True:
+                # Select an action 
+                action = agent.select_action(state_0)
+                # Execute the action
+                obv, reward, done, _ = env.step(action)
+                score+=reward
+                # Observe the result
+                state = obv
+                # Update the Q based on the result
+                agent.update(state_0, action, reward, state, done)
+                # Setting up for the next iteration
+                state_0 = state
+                if done:
+                    #print("Episode %d finished after %f time steps, score=%d" % (episode, i, score))
+                    break
         scores2[episode]=score
     return  np.mean(scores1), np.std(scores1), np.mean(scores2), np.std(scores2)
+    
+    
 if __name__ == "__main__":
     argv=sys.argv
     if len(argv)<2:
@@ -89,7 +93,7 @@ if __name__ == "__main__":
     elif argv[1] in update_methods:
         update_method=argv[1]
     else:
-        update_method="COUNT_BASED"
+        update_method="SORTED_UPDATE"
     if len(argv)>2:
         if argv[2] in selection_methods:
             selection_method=argv[1]
@@ -108,21 +112,22 @@ if __name__ == "__main__":
         print("Executing 1000 step  episodes")
         len_episode=1000
    
-    env_name="NChain-v0"
+    env_name="FrozenLake-v0"
     print("Executing %d episodes of %d steps; Update:"+update_method+" Selection:"+selection_method);
-    delta=0.1
-    power=0.1
-    max_power=1
+    delta=1
+    power=3
+    max_power=15
     n=int((max_power-power)/delta+1)
     tableData={"Power":[""]*n, "Score 1":[1.]*n, "Std Dev 1":[1.]*n , "Score 2":[1.]*n, "Std Dev 2":[1.]*n}
     i=0
     while power<=max_power:
        tableData["Power"][i]=power
        tableData["Score 1"][i],tableData["Std Dev 1"][i], tableData["Score 2"][i], tableData["Std Dev 2"][i]=simulate(env_name,num_episodes,  len_episode,update_methods[update_method],  selection_methods[selection_method], power)
+       print("Power=%f  %f    %f  %f  %f" %(power, tableData["Score 1"][i],tableData["Std Dev 1"][i], tableData["Score 2"][i], tableData["Std Dev 2"][i]))
        power+=delta
        i+=1
     df=pd.DataFrame(tableData)
     print (tabulate(df, headers='keys', tablefmt='psql'))
-    df.to_csv("sorted_power.csv", sep=',')
+    df.to_csv("sorted_power_frozen_lake.csv", sep=',')
     plt.plot(tableData["Power"],tableData["Score 1"])
     plt.show()

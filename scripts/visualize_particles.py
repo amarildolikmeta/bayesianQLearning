@@ -4,13 +4,15 @@ import sys
 import os.path
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from count_pvf  import PVFLearning as PVF
+from PVF  import PVFLearning 
 import matplotlib.pyplot as plt
 discount_factor=0.99
-update_methods={"COUNT_BASED":PVF.COUNT_BASED,"QUANTILE_UPDATE":PVF.QUANTILE_UPDATE,"SORTED_UPDATE":PVF.SORTED_UPDATE}
+update_methods={"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING,"COUNT_BASED":PVF.COUNT_BASED,"QUANTILE_UPDATE":PVF.QUANTILE_UPDATE,"SORTED_UPDATE":PVF.SORTED_UPDATE, "QUANTILE_REGRESSION":PVF.QUANTILE_REGRESSION,}
 selection_methods={"Q_VALUE_SAMPLING":PVF.Q_VALUE_SAMPLING,"MYOPIC_VPI":PVF.MYOPIC_VPI}
 envs=["NChain-v0", "FrozenLake-v0"]
 num_episodes_env={"NChain-v0":10, "FrozenLake-v0":1000}
 len_episode_env={"NChain-v0":1000, "FrozenLake-v0":100}
+learning_rate_exponents={"NChain-v0":0.2, "FrozenLake-v0":1}
 
 def simulate(env_name,num_episodes,  len_episode,update_method,  selection_method, power=1):
     # Initialize the  environment
@@ -21,9 +23,11 @@ def simulate(env_name,num_episodes,  len_episode,update_method,  selection_metho
     MAX_T=len_episode
     VMap={"NChain-v0":500, "FrozenLake-v0":1}
     vMax=VMap[env_name]
-    if update_method in ["SORTED_UPDATE"]:
-        power=0.8
-    agent=PVF(sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax, exponent=power, keepHistory=True, N=32)
+    power=learning_rate_exponents[env_name]
+    if update_method==update_methods["QUANTILE_REGRESSION"]:
+        power=1
+    print("Alpha=%f" %(power))
+    agent=PVFLearning(sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax, exponent=power, keepHistory=True, N=32)
     agent.set_selection_method(selection_method)
     agent.set_update_method(update_method)
     scores1=np.zeros(NUM_EPISODES)

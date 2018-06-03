@@ -11,7 +11,7 @@ from tabulate import tabulate
 
 #dictionary of algorithms
 algs={"PVF":PVFLearning }
-update_methods={"SORTED_UPDATE":PVFLearning.SORTED_UPDATE,"COUNT_BASED":PVFLearning.COUNT_BASED,"QUANTILE_UPDATE":PVFLearning.QUANTILE_UPDATE,}
+update_methods={"SORTED_UPDATE":PVFLearning.SORTED_UPDATE,"COUNT_BASED":PVFLearning.COUNT_BASED,"QUANTILE_UPDATE":PVFLearning.QUANTILE_UPDATE,"QUANTILE_REGRESSION":PVFLearning.QUANTILE_REGRESSION,}
 selection_methods={"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING,"MYOPIC_VPI":PVFLearning.MYOPIC_VPI,}
 discount_factor=0.99
 
@@ -34,12 +34,10 @@ def simulate(env_name,  algorithm,update_method,  selection_method):
     convergence_th=1
     count=0
     episode_count=0
-    exponent=1
+    exponent=0.2
     if algorithm in ["PVF"]:
         VMap={"NChain-v0":500, "FrozenLake-v0":1}
         vMax=VMap[env_name]
-        if update_method in ["SORTED_UPDATE"]:
-            exponent=0.2
         agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax, exponent=exponent)
         agent.set_selection_method(selection_methods[selection_method])
         agent.set_update_method(update_methods[update_method])
@@ -143,10 +141,11 @@ if __name__ == "__main__":
     len_episode=1000
     
     algorithms={
-                           "PVF_CB":{"alg":"PVF", "update":"COUNT_BASED","selection":"MYOPIC_VPI"} , 
+                           
+                           "PVF_SU":{"alg":"PVF", "update":"SORTED_UPDATE", "selection":"MYOPIC_VPI"}, 
                            }
                            # "PVF_QU":{"alg":"PVF", "update":"QUANTILE_UPDATE", "selection":"MYOPIC_VPI"}, 
-                           #"PVF_SU":{"alg":"PVF", "update":"SORTED_UPDATE", "selection":"MYOPIC_VPI"}, 
+                           #"PVF_QR":{"alg":"PVF", "update":"QUANTILE_REGRESSION","selection":"MYOPIC_VPI"} , 
     num_algs=len(algorithms)
     headingList=["Algorithm", "Episodes to convergence", "Std Dev", "Converged", "Did not Converge"]
     tableData={"Algorithm":[""]*num_algs, "Episodes to convergence":[1.]*num_algs, "Std Dev":[1.]*num_algs, "Converged":[1]*num_algs, "Did not Converge":[1]*num_algs, }
@@ -170,7 +169,7 @@ if __name__ == "__main__":
         i=i+1
     df=pd.DataFrame(tableData)
     print (tabulate(df, headers='keys', tablefmt='psql'))
-    df.to_csv("convergence_frozen_lake_CB.csv", sep=',')
+    df.to_csv("convergence_frozen_lake_SU.csv", sep=',')
     
     
 

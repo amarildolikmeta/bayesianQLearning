@@ -15,7 +15,8 @@ class PVFLearning(object):
     COUNT_BASED=0
     QUANTILE_UPDATE=1
     SORTED_UPDATE=2
-    def __init__(self, sh, gamma=0.99, learning_rate_scheduler=None, selection_method=1, update_method=0, VMax=Vmax,N=100, n_prior_particles=1, h=1, exponent=1, keepHistory=False, quantileCount=False):
+    QUANTILE_REGRESSION=3
+    def __init__(self, sh, gamma=0.99, learning_rate_scheduler=None, selection_method=1, update_method=0, VMax=Vmax,N=100, n_prior_particles=1, h=1, exponent=0.2, keepHistory=False, quantileCount=False):
         
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
@@ -41,12 +42,16 @@ class PVFLearning(object):
         self.history = np.empty(shape=(self.NUM_STATES, self.NUM_ACTIONS,self.N),  dtype=(object))
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
-                self.NG[state, action, :, 0]=rand.uniform(0, self.VMax, self.N)
+                self.NG[state, action, :, 0]=np.sort(rand.uniform(0, self.VMax, self.N))
                 self.NG[state, action, :, 1]=np.ones(self.N) * self.n_prior_particles / self.N
                 self.means[state, action]=self.mean(self.NG[state, action, :, 0],self.NG[state, action, :, 1])
                 for p in range(self.N):
                     self.history[state, action, p]=[self.NG[state, action, p, 0]]
-                
+        #quantiles for the quantile update
+        self.quantiles=[k*(100/(self.N-1)) for k in range(self.N) ]
+        #quantiles for the quantile regression
+        self.taus=[k*(1/(self.N)) for k in range(self.N+1) ]
+        self.taus=[(self.taus[k+1]+self.taus[k])/2 for k in range(len(self.taus)-1)]
     def addToHistory(self,state, action):
         particles=self.NG[state, action, :, 0]
         for p in range(self.N):
@@ -59,6 +64,8 @@ class PVFLearning(object):
              self.update_quantile( state, action, reward, next_state, done)
         elif self.update_method==PVFLearning.SORTED_UPDATE:
              self.update_sorted( state, action, reward, next_state, done)
+        elif self.update_method==PVFLearning.QUANTILE_REGRESSION:
+             self.update_quantile_regression( state, action, reward, next_state, done)
         if self.keepHistory:
             self.addToHistory(state, action)
         
@@ -78,8 +85,7 @@ class PVFLearning(object):
         if self.quantileCount==False:
             self.NG[state, action, :, 0] = np.random.choice(particles, self.N, p=weights, replace=False)
         else:
-            quantiles=[k*(100/(self.N-1)) for k in range(self.N) ]
-            self.NG[state, action, :, 0] =np.percentile(self.weight_array(particles, counter),quantiles)
+            self.NG[state, action, :, 0] =np.percentile(self.weight_array(particles, counter),self.quantiles)
         self.NG[state, action, :, 1] = np.ones(self.N) * np.sum(counter) / len(counter)
         self.means[state, action]=self.mean(self.NG[state, action, :, 0],self.NG[state, action, :, 1])
     
@@ -95,9 +101,22 @@ class PVFLearning(object):
         for element in itertools.product(old_particles, target):
             tmp[j]=(1-alpha)*element[0]+(alpha)*element[1]
             j=j+1
-        self.NG[state, action, :, 0] =np.percentile(tmp,[k*(100/(len(old_particles)-1)) for k in range(len(old_particles)) ])
+        self.NG[state, action, :, 0] =np.percentile(tmp,self.quantiles)
         self.means[state, action]=self.mean(self.NG[state, action, :, 0],self.NG[state, action, :, 1])
     
+    def update_quantile_regression(self, state, action, reward, next_state, done):
+        means=self.means[next_state, :]
+        best_action=self.getMax(means)
+        alpha = self.learning_rate_scheduler.get_learning_rate(state, action)
+        z=self.sampleParticle(next_state, best_action)
+        target=reward+self.discount_factor*z
+        for i in range(self.N):
+            delta=0
+            if target<self.NG[state, action, i, 0]:
+                delta=1
+            self.NG[state, action, i, 0] =self.NG[state, action, i, 0]+alpha*(self.taus[i]-delta)
+        self.means[state, action]=self.mean(self.NG[state, action, :, 0],self.NG[state, action, :, 1])
+        
     def update_sorted(self, state, action, reward, next_state, done):
         means=self.means[next_state, :]
         best_action=self.getMax(means)
@@ -129,19 +148,6 @@ class PVFLearning(object):
         weights = counter / np.sum(counter)
         return np.sum(weights * (particles - self.mean(particles, weights)) ** 2)
     
-    
-    def update_weights(self, x, particles, weights):
-        return weights*(1/self.h)*self.K((-1*particles+x)/self.h)
-        
-    def K(self, x):
-        return 0.5*(1/np.pi)*np.exp(-0.5*(x**2))
-        
-    def isResamplingNeeded(self, weights):
-        Neff=self.N/(1+(N**2)*np.var(weights))
-        return Neff<self.Nth
-        
-    def resampleParticles(self, particles, weights):
-        return np.random.choice(a=particles,size=(self.N), p=weights)
     
     def getNumParticles(self):
         return self.N
@@ -210,7 +216,7 @@ class PVFLearning(object):
             raise Exception('Selection Method not Valid')
     
     def set_update_method(self,  method=0):
-        if method in [PVFLearning.COUNT_BASED,PVFLearning.QUANTILE_UPDATE, PVFLearning.SORTED_UPDATE]:
+        if method in [PVFLearning.COUNT_BASED,PVFLearning.QUANTILE_UPDATE, PVFLearning.SORTED_UPDATE, PVFLearning.QUANTILE_REGRESSION]:
             self.update_method=method
         else:
             raise Exception('Update Method not Valid')

@@ -20,7 +20,7 @@ class PVFLearning(object):
     PARTICLE_CLASSIC=4
     MYOPIC_VPI=1
     
-    def __init__(self, sh, gamma=0.99, N=N, learning_rate_scheduler=None, selection_method=1, update_method=2, VMax=Vmax, q=None, h=25):
+    def __init__(self, sh, gamma=0.99, N=N, learning_rate_scheduler=None, selection_method=1, update_method=2, VMax=Vmax, q=None, h=25, exponent=1, keepHistory=True):
         
         self.NUM_STATES=sh[0]
         self.NUM_ACTIONS=sh[1]
@@ -33,23 +33,34 @@ class PVFLearning(object):
         self.update_method=update_method
         self.VMax=VMax
         self.h=h
-        
+        self.keepHistory=keepHistory
        
         if learning_rate_scheduler is None:
             self.learning_rate_scheduler = CountLearningRateScheduler(self.NUM_STATES, self.NUM_ACTIONS)
         else:
             self.learning_rate_scheduler = learning_rate_scheduler
         #initialize the samples and weights
+        self.history = np.empty(shape=(self.NUM_STATES, self.NUM_ACTIONS,self.N),  dtype=(object))
         self.NG = np.zeros(shape=(self.NUM_STATES, self.NUM_ACTIONS,self.N),  dtype=(float,2))
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
                 self.NG[state, action, :, 0]=rand.uniform(0, self.VMax, self.N)
                 self.NG[state, action, :, 1]=1/self.N
+                for p in range(self.N):
+                    self.history[state, action, p]=[self.NG[state, action, p, 0]]
         self.returns=np.zeros(shape=(self.NUM_STATES, self.NUM_ACTIONS))
         for state in range(self.NUM_STATES):
             for action in range(self.NUM_ACTIONS):
                 self.returns[state, action]=np.mean(self.NG[state, action, :, 0])
-                
+    
+    def addToHistory(self,state, action):
+        particles=self.NG[state, action, :, 0]
+        for p in range(self.N):
+            self.history[state, action, p].append(particles[p])
+            
+    def getHistory(self):
+        return self.history
+        
     def update(self, state, action, reward, next_state, done=False,):
         if self.update_method==PVFLearning.Q_VALUE_SAMPLING:
             self.update_sampling(state, action, reward, next_state, done)
@@ -61,7 +72,8 @@ class PVFLearning(object):
             self.update_particle_filter(state, action, reward, next_state, done)
         else:
             self.update_weighted_maximum(state, action, reward, next_state, done)
-           
+        if self.keepHistory:
+            self.addToHistory(state, action)
     
     
     def update_sampling(self, state, action, reward, next_state, done):

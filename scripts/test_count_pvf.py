@@ -11,7 +11,7 @@ from tabulate import tabulate
 
 #dictionary of algorithms
 algs={"PVF":PVFLearning }
-update_methods={"SORTED_UPDATE":PVFLearning.SORTED_UPDATE,"COUNT_BASED":PVFLearning.COUNT_BASED,"QUANTILE_UPDATE":PVFLearning.QUANTILE_UPDATE,}
+update_methods={"QUANTILE_REGRESSION":PVFLearning.QUANTILE_REGRESSION,"SORTED_UPDATE":PVFLearning.SORTED_UPDATE,"COUNT_BASED":PVFLearning.COUNT_BASED,"QUANTILE_UPDATE":PVFLearning.QUANTILE_UPDATE,}
 selection_methods={"Q_VALUE_SAMPLING":PVFLearning.Q_VALUE_SAMPLING,"MYOPIC_VPI":PVFLearning.MYOPIC_VPI,}
 discount_factor=0.99
 
@@ -35,8 +35,8 @@ def simulate(env_name,num_episodes,  len_episode, algorithm,update_method,  sele
     counts=np.zeros(NUM_ACTIONS)
     for episode in range(NUM_EPISODES):
         if algorithm in ["PVF"]:
-            if update_method in ['SORTED_UPDATE']:
-                power=0.8
+            if update_method in ['SORTED_UPDATE', 'QUANTILE_UPDATE']:
+                power=0.2
             agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS), VMax=vMax, exponent=power)
         else:
             agent=algs[algorithm](sh=(NUM_STATES, NUM_ACTIONS))
@@ -142,12 +142,9 @@ if __name__ == "__main__":
     len_episode=1000
     print("Testing on "+env_name)
     algorithms={
-                           "PVF_SU_MV":{"alg":"PVF", "update":"SORTED_UPDATE", "selection":"MYOPIC_VPI"}, 
-                           "PVF_CB_MV":{"alg":"PVF", "update":"COUNT_BASED","selection":"MYOPIC_VPI"} , 
-                           "PVF_QU_MV":{"alg":"PVF", "update":"QUANTILE_UPDATE", "selection":"MYOPIC_VPI"},
-                           "PVF_SU_QS":{"alg":"PVF", "update":"SORTED_UPDATE", "selection":"Q_VALUE_SAMPLING"}, 
-                           "PVF_CB_QS":{"alg":"PVF", "update":"COUNT_BASED","selection":"Q_VALUE_SAMPLING"} , 
-                           "PVF_QU_QS":{"alg":"PVF", "update":"QUANTILE_UPDATE", "selection":"Q_VALUE_SAMPLING"},  
+                          "PVF_QuantileegressionR":{"alg":"PVF", "update":"QUANTILE_REGRESSION", "selection":"MYOPIC_VPI"}, 
+                          "PVF_SortedUpdate":{"alg":"PVF", "update":"SORTED_UPDATE", "selection":"MYOPIC_VPI"}, 
+                          "PVF_CountBased":{"alg":"PVF", "update":"COUNT_BASED","selection":"MYOPIC_VPI"} ,   
                            }
                             
     num_algs=len(algorithms)
